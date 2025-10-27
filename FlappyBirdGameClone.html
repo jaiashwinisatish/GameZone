@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Flappy Bird</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #34495e; /* Dark background */
+            font-family: 'Arial', sans-serif;
+            color: #ecf0f1;
+            overflow: hidden; /* Prevent scrollbars */
+        }
+
+        .game-container {
+            position: relative;
+            border: 4px solid #2c3e50;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        canvas {
+            background-color: #7ed6df; /* Sky blue */
+            display: block;
+        }
+
+        #score {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.6);
+            z-index: 10;
+        }
+
+        #messageBox {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.75);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 20;
+            font-size: 1.2em;
+        }
+
+        #messageBox h2 {
+            font-size: 3em;
+            margin-bottom: 15px;
+            color: #f1c40f; /* Yellow for Game Over */
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.7);
+        }
+
+        #messageBox p {
+            font-size: 1.5em;
+            margin-bottom: 25px;
+        }
+
+        #restartButton {
+            background-color: #27ae60; /* Green restart button */
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.2em;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        #restartButton:hover {
+            background-color: #2ecc71;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        <div id="score">0</div>
+
+        <div id="messageBox" style="display: none;">
+            <h2>Game Over!</h2>
+            <p>Score: <span id="finalScore">0</span></p>
+            <button id="restartButton">Restart Game</button>
+        </div>
+    </div>
+
+    <!-- Sound Effects -->
+    <audio id="flapSound" src="https://www.soundjay.com/buttons/sounds/button-1.mp3" preload="auto"></audio>
+    <audio id="hitSound" src="https://www.soundjay.com/buttons/sounds/button-2.mp3" preload="auto"></audio>
+    <!-- Background Music (New Addition) -->
+    <audio id="bgMusic" src="https://www.soundjay.com/misc/sounds/wind-chime-3.mp3" preload="auto" loop></audio>
+
+    <script>
+        // --- Game Constants and Setup ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const messageBox = document.getElementById('messageBox');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const restartButton = document.getElementById('restartButton');
+
+        // Audio elements
+        const flapSound = document.getElementById('flapSound');
+        const hitSound = document.getElementById('hitSound');
+        const bgMusic = document.getElementById('bgMusic'); // New background music element
+
+        // Game parameters (ADJUSTED FOR SLOWER SPEED)
+        const BIRD_RADIUS = 15;
+        const GRAVITY = 0.4; // Reduced gravity for slower feel
+        const JUMP_STRENGTH = -7.5; // Adjusted jump strength
+        const PIPE_WIDTH = 60;
+        const PIPE_GAP = 150; 
+        const PIPE_SPEED = 1.5; // Reduced speed for slower game
+        const PIPE_SPAWN_INTERVAL = 1800; // Slightly increased interval to match speed
+        const GROUND_HEIGHT = 50; 
+
+        // Game state variables
+        let bird;
+        let pipes;
+        let score;
+        let isGameOver;
+        let lastPipeSpawnTime;
+        let gameLoopId; // For requestAnimationFrame
+        let birdFlapAnimation = 0; // For bird animation
+
+        // --- Helper Functions ---
+
+        /**
+         * Resets the game state to its initial values.
+         */
+        function resetGame() {
+            bird = {
+                x: 50,
+                y: canvas.height / 2,
+                velocityY: 0
+            };
+            pipes = [];
+            score = 0;
+            isGameOver = false;
+            lastPipeSpawnTime = 0;
+            scoreDisplay.textContent = score;
+            messageBox.style.display = 'none';
+
+            // Clear any previous game loop
+            if (gameLoopId) {
+                cancelAnimationFrame(gameLoopId);
+            }
+            gameLoopId = requestAnimationFrame(gameLoop);
+            
+            // Start background music (may fail if browser blocks uninitiated autoplay)
+            bgMusic.volume = 0.3; // Set music volume low
+            bgMusic.play().catch(e => console.log("Music auto-play blocked. User must interact first."));
+        }
+
+        /**
+         * Draws the ground.
+         */
+        function drawGround() {
+            ctx.fillStyle = '#2ecc71'; // Green ground
+            ctx.fillRect(0, canvas.height - GROUND_HEIGHT, canvas.width, GROUND_HEIGHT);
+            
+            // Add some texture or lines to the ground
+            ctx.strokeStyle = '#27ae60';
+            ctx.lineWidth = 2;
+            for(let i = 0; i < canvas.width; i += 20) {
+                ctx.beginPath();
+                ctx.moveTo(i, canvas.height - GROUND_HEIGHT);
+                ctx.lineTo(i + 10, canvas.height - GROUND_HEIGHT + 10);
+                ctx.stroke();
+            }
+        }
+
+        /**
+         * Draws the bird on the canvas.
+         */
+        function drawBird() {
+            ctx.fillStyle = '#f1c40f'; // Yellow bird
+            ctx.beginPath();
+            ctx.arc(bird.x, bird.y, BIRD_RADIUS, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Simple wing animation (a small triangle on the side)
+            ctx.fillStyle = '#e67e22'; // Orange for wing
+            ctx.beginPath();
+            // Calculate wing position based on flap animation
+            const wingYOffset = Math.sin(birdFlapAnimation * Math.PI / 10) * 5; // Swing up and down
+            ctx.moveTo(bird.x + BIRD_RADIUS - 5, bird.y + wingYOffset);
+            ctx.lineTo(bird.x + BIRD_RADIUS + 10, bird.y + 5 + wingYOffset);
+            ctx.lineTo(bird.x + BIRD_RADIUS - 5, bird.y + 15 + wingYOffset);
+            ctx.fill();
+
+            // Draw a simple eye
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(bird.x + BIRD_RADIUS / 2, bird.y - BIRD_RADIUS / 2.5, BIRD_RADIUS / 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw a simple beak
+            ctx.fillStyle = '#f39c12'; // Orange beak
+            ctx.beginPath();
+            ctx.moveTo(bird.x + BIRD_RADIUS + 2, bird.y - BIRD_RADIUS / 4);
+            ctx.lineTo(bird.x + BIRD_RADIUS + 12, bird.y);
+            ctx.lineTo(bird.x + BIRD_RADIUS + 2, bird.y + BIRD_RADIUS / 4);
+            ctx.fill();
+        }
+
+        /**
+         * Draws all pipes on the canvas.
+         */
+        function drawPipes() {
+            ctx.fillStyle = '#27ae60'; // Green pipes
+            pipes.forEach(pipe => {
+                // Top pipe
+                ctx.fillRect(pipe.x, 0, PIPE_WIDTH, pipe.y);
+                // Bottom pipe
+                ctx.fillRect(pipe.x, pipe.y + PIPE_GAP, PIPE_WIDTH, canvas.height - (pipe.y + PIPE_GAP) - GROUND_HEIGHT);
+            });
+        }
+
+        /**
+         * Moves the bird based on gravity and velocity.
+         */
+        function updateBird() {
+            bird.velocityY += GRAVITY;
+            bird.y += bird.velocityY;
+
+            // Simple boundary for the top of the canvas
+            if (bird.y < BIRD_RADIUS) {
+                bird.y = BIRD_RADIUS;
+                bird.velocityY = 0;
+            }
+
+            // Update flap animation
+            birdFlapAnimation++;
+        }
+
+        /**
+         * Moves pipes from right to left and spawns new ones.
+         */
+        function updatePipes(currentTime) {
+            // Spawn new pipes
+            if (currentTime - lastPipeSpawnTime > PIPE_SPAWN_INTERVAL) {
+                // Random height for the gap
+                const minY = 50;
+                const maxY = canvas.height - PIPE_GAP - GROUND_HEIGHT - 50;
+                const gapY = Math.random() * (maxY - minY) + minY;
+
+                pipes.push({
+                    x: canvas.width,
+                    y: gapY, // y-coordinate of the bottom of the top pipe
+                    passed: false // To track score
+                });
+                lastPipeSpawnTime = currentTime;
+            }
+
+            // Move and filter pipes
+            pipes.forEach(pipe => {
+                pipe.x -= PIPE_SPEED;
+            });
+
+            // Remove pipes that are off-screen
+            pipes = pipes.filter(pipe => pipe.x + PIPE_WIDTH > 0);
+        }
+
+        /**
+         * Checks for collisions between the bird and pipes or ground.
+         * @returns {boolean} True if a collision occurred.
+         */
+        function checkCollision() {
+            // Ground collision
+            if (bird.y + BIRD_RADIUS > canvas.height - GROUND_HEIGHT) {
+                return true;
+            }
+
+            // Pipe collision
+            for (const pipe of pipes) {
+                // Check if bird's x-range overlaps with pipe's x-range
+                if (bird.x + BIRD_RADIUS > pipe.x && bird.x - BIRD_RADIUS < pipe.x + PIPE_WIDTH) {
+                    // Check if bird's y-range overlaps with top pipe or bottom pipe
+                    const hitTopPipe = bird.y - BIRD_RADIUS < pipe.y;
+                    const hitBottomPipe = bird.y + BIRD_RADIUS > pipe.y + PIPE_GAP;
+
+                    if (hitTopPipe || hitBottomPipe) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Updates the score when the bird passes a pipe.
+         */
+        function updateScore() {
+            pipes.forEach(pipe => {
+                // If bird has passed the pipe's x-coordinate and hasn't been scored yet
+                if (!pipe.passed && bird.x > pipe.x + PIPE_WIDTH) {
+                    score++;
+                    scoreDisplay.textContent = score;
+                    pipe.passed = true;
+                }
+            });
+        }
+
+        /**
+         * Main game update logic, called on each animation frame.
+         * @param {DOMHighResTimeStamp} currentTime The current time provided by requestAnimationFrame.
+         */
+        function gameLoop(currentTime) {
+            if (isGameOver) {
+                return;
+            }
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Update game state
+            updateBird();
+            updatePipes(currentTime);
+            updateScore();
+
+            // Draw everything
+            drawPipes();
+            drawGround();
+            drawBird();
+
+            // Check for game over conditions
+            if (checkCollision()) {
+                gameOver();
+                return;
+            }
+
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        /**
+         * Ends the game, displays message, and plays sound.
+         */
+        function gameOver() {
+            isGameOver = true;
+            cancelAnimationFrame(gameLoopId); // Stop the animation loop
+            finalScoreDisplay.textContent = score;
+            messageBox.style.display = 'flex'; // Show game over message
+            hitSound.play();
+            
+            // Stop and rewind background music
+            bgMusic.pause();
+            bgMusic.currentTime = 0;
+        }
+
+        /**
+         * Makes the bird jump when spacebar is pressed or clicked.
+         */
+        function flap() {
+            if (!isGameOver) {
+                bird.velocityY = JUMP_STRENGTH;
+                flapSound.currentTime = 0; // Rewind sound
+                flapSound.play();
+            } else {
+                // If game is over, and we click/spacebar, restart
+                resetGame();
+            }
+        }
+
+        // --- Event Listeners ---
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault(); // Prevent page scrolling
+                flap();
+            }
+        });
+
+        canvas.addEventListener('click', flap); // Click to flap
+        canvas.addEventListener('touchstart', (e) => { // Tap to flap for mobile
+            e.preventDefault();
+            flap();
+        });
+
+        restartButton.addEventListener('click', resetGame);
+
+        // Initial game start
+        resetGame();
+    </script>
+</body>
+</html>
