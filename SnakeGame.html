@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snake</title>
+    <title>Snake Game</title> <!-- Changed title to 'Snake Game' -->
     <!-- Load Tailwind CSS for utility classes -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -111,15 +111,19 @@
         <div id="canvas-wrapper" class="relative">
             <canvas id="gameCanvas"></canvas>
 
-            <!-- Game Over Message Box -->
+            <!-- Game Start/Over Message Box (Hidden by default, shown when needed) -->
             <div id="messageBox" class="message-box hidden rounded-lg">
-                <h2 class="text-4xl font-extrabold mb-4">Game Over!</h2>
-                <p class="text-xl">Final Score: <span id="finalScore">0</span></p>
-                <button id="restartButton" class="restart-button">Restart Game</button>
+                <!-- Content will be set by JavaScript -->
             </div>
         </div>
 
     </div>
+    
+    <!-- Audio Elements -->
+    <audio id="bgMusic" src="https://www.soundjay.com/misc/sounds/wind-chime-3.mp3" preload="auto" loop></audio>
+    <audio id="eatSound" src="https://www.soundjay.com/misc/sounds/magic-chime-01.mp3" preload="auto"></audio>
+    <!-- Game Over Sound (NEW) -->
+    <audio id="failSound" src="https://www.soundjay.com/misc/sounds/fail-trumpet-1.mp3" preload="auto"></audio>
 
     <script>
         // --- Game Constants and Setup ---
@@ -127,9 +131,12 @@
         const ctx = canvas.getContext('2d');
         const scoreDisplay = document.getElementById('score');
         const messageBox = document.getElementById('messageBox');
-        const restartButton = document.getElementById('restartButton');
-        const finalScoreDisplay = document.getElementById('finalScore');
         const gameStatus = document.getElementById('game-status');
+        
+        // Audio elements
+        const bgMusic = document.getElementById('bgMusic');
+        const eatSound = document.getElementById('eatSound');
+        const failSound = document.getElementById('failSound'); // NEW fail sound
 
         const TILE_SIZE = 20; // Pixel size of each tile
         const GRID_SIZE = 20; // Number of tiles in one dimension (20x20 grid)
@@ -149,13 +156,27 @@
         let direction;
         let score;
         let isGameOver;
+        let isGamePaused; // NEW: Added paused state for start screen
         let lastMoveTime;
         let nextDirection; // Buffer for direction changes
-
-        // requestAnimationFrame variables
         let gameLoopId;
 
         // --- Utility Functions ---
+        
+        /**
+         * Robustly attempts to play an audio element, handling auto-play policy rejections.
+         * Sets volume to 1.0 for maximum volume.
+         * @param {HTMLAudioElement} audioElement The audio element to play.
+         */
+        function playAudio(audioElement) {
+            audioElement.volume = 1.0; // Ensure 100% volume
+            audioElement.currentTime = 0; // Rewind before playing (important for effects)
+            audioElement.play().catch(error => {
+                // Audio playback error, usually due to browser policy.
+                // We log it, but the fix relies on the user interaction trigger.
+                console.error("Audio playback blocked:", error);
+            });
+        }
 
         /**
          * Converts grid coordinates (x, y) to canvas pixel coordinates.
@@ -179,9 +200,9 @@
         }
 
         /**
-         * Initializes the game state.
+         * Initializes the game state variables.
          */
-        function initGame() {
+        function resetGameLogic() {
             // Initial snake position (center-ish)
             snake = [
                 { x: Math.floor(GRID_SIZE / 2) + 2, y: Math.floor(GRID_SIZE / 2) },
@@ -192,22 +213,14 @@
             nextDirection = { x: 1, y: 0 };
             score = 0;
             isGameOver = false;
+            isGamePaused = true;
             lastMoveTime = performance.now();
-            messageBox.classList.add('hidden');
             scoreDisplay.children[0].textContent = `🍎 Score: ${score}`;
-            gameStatus.textContent = "Use Arrow Keys";
 
             generateFood();
-
-            // Clear any previous animation frames and start the new loop
-            if (gameLoopId) {
-                cancelAnimationFrame(gameLoopId);
-            }
-            gameLoopId = requestAnimationFrame(gameLoop);
+            draw(); // Draw initial state
         }
-
-        // --- Drawing Functions ---
-
+        
         /**
          * Draws the current game state (snake and food) on the canvas.
          */
@@ -215,10 +228,9 @@
             // Clear the canvas area
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw Food
+            // Draw Food (Apple)
             ctx.fillStyle = APPLE_COLOR;
             ctx.beginPath();
-            // Draw a slightly rounded square for the apple
             const foodX = toPixels(food.x);
             const foodY = toPixels(food.y);
             const radius = 4; // Corner radius for the apple
@@ -260,10 +272,10 @@
         }
 
         /**
-         * Updates the score display.
+         * Updates the score display and runs the pulse animation.
          * @param {number} newScore The current score.
          */
-        function updateScore(newScore) {
+        function updateScoreDisplay(newScore) {
             scoreDisplay.children[0].textContent = `🍎 Score: ${newScore}`;
             // Simple animation on eating food
             scoreDisplay.children[0].classList.add('apple-pulse');
@@ -299,7 +311,7 @@
          * Main game update logic, called every GAME_SPEED interval.
          */
         function updateGame() {
-            if (isGameOver) return;
+            if (isGameOver || isGamePaused) return;
 
             // Update direction with buffered input
             direction = nextDirection;
@@ -322,9 +334,12 @@
             // Check if the snake ate the food
             if (newHead.x === food.x && newHead.y === food.y) {
                 score++;
-                updateScore(score);
+                updateScoreDisplay(score);
                 // The snake grows by NOT removing the tail
                 generateFood();
+                
+                // Play sound effect for eating 
+                playAudio(eatSound); // Using robust playAudio function
             } else {
                 // Remove the tail if no food was eaten
                 snake.pop();
@@ -338,7 +353,10 @@
          * The main game animation loop using requestAnimationFrame.
          */
         function gameLoop(currentTime) {
-            if (isGameOver) return;
+            if (isGameOver || isGamePaused) {
+                // If paused or over, stop the loop temporarily
+                return;
+            }
 
             gameLoopId = requestAnimationFrame(gameLoop);
 
@@ -348,6 +366,63 @@
                 updateGame();
             }
         }
+        
+        /**
+         * Shows the start screen overlay.
+         * @param {string} title The title to display (e.g., "Start Game" or "Game Over!").
+         * @param {boolean} showRestart If true, shows the restart button.
+         * @param {number} finalScore If provided, displays the final score.
+         */
+        function showOverlay(title, showRestart, finalScore) {
+            const restartButtonHTML = showRestart 
+                ? `<button id="restartButton" class="restart-button">Restart Game</button>`
+                : '';
+            const scoreHTML = finalScore !== undefined
+                ? `<p class="text-xl">Final Score: <span id="finalScore">${finalScore}</span></p>`
+                : '';
+            
+            messageBox.innerHTML = `
+                <h2 class="text-4xl font-extrabold mb-4">${title}</h2>
+                ${scoreHTML}
+                ${restartButtonHTML}
+                <p class="text-lg mt-4 text-gray-400">${showRestart ? '' : 'Press ENTER or Click to Start'}</p>
+            `;
+            messageBox.classList.remove('hidden');
+
+            // Re-attach event listener if the button was just created
+            if (showRestart) {
+                document.getElementById('restartButton').addEventListener('click', startGame);
+            }
+        }
+
+        /**
+         * Function to start the game after initial user interaction.
+         */
+        function startGame() {
+            // 1. Reset logic and state
+            resetGameLogic();
+
+            // 2. Play music (This is the critical step for browser policy)
+            // Background music should not be rewound if it's already playing, but since this
+            // is called on start/restart, we'll ensure it plays and sets volume.
+            bgMusic.volume = 1.0; // VOLUME set to 100%
+            bgMusic.play().catch(e => {
+                // Fallback for auto-play block, usually fixed by the user interaction check
+                console.error("Background music playback blocked:", e);
+            });
+
+
+            // 3. Update state to running
+            isGamePaused = false;
+            messageBox.classList.add('hidden');
+            gameStatus.textContent = "Use Arrow Keys";
+
+            // 4. Start the animation loop
+            if (gameLoopId) {
+                cancelAnimationFrame(gameLoopId);
+            }
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
 
         /**
          * Displays the game over message and stops the game.
@@ -355,17 +430,39 @@
         function gameOver() {
             isGameOver = true;
             cancelAnimationFrame(gameLoopId);
-            finalScoreDisplay.textContent = score;
             gameStatus.textContent = "Hit wall or yourself!";
-            messageBox.classList.remove('hidden');
+            
+            // Play game over sound
+            playAudio(failSound); // Using robust playAudio function
+
+            // Stop and rewind background music
+            bgMusic.pause();
+            bgMusic.currentTime = 0;
+
+            // Show Game Over overlay
+            showOverlay('Game Over!', true, score);
         }
 
         // --- Event Handlers ---
 
         /**
-         * Handles arrow key presses for direction change.
+         * Handles key presses.
          */
         function handleKeydown(event) {
+            if (isGameOver && (event.key === 'Enter' || event.key === ' ')) {
+                // User pressed key to restart (handled by restart button logic in showOverlay)
+                return; 
+            }
+            
+            // If the game is paused (start screen), start it
+            if (isGamePaused) {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    startGame();
+                    event.preventDefault();
+                }
+                return;
+            }
+
             // Prevent snake from reversing immediately (e.g., going left when moving right)
             const newDir = { x: 0, y: 0 };
             
@@ -391,15 +488,27 @@
                 event.preventDefault(); // Stop scrolling the page
             }
         }
+        
+        /**
+         * Handles click/tap interaction for starting the game.
+         */
+        function handleInteraction() {
+            if (isGamePaused && !isGameOver) {
+                startGame();
+            }
+        }
+
 
         // --- Initialization ---
-
-        restartButton.addEventListener('click', initGame);
         window.addEventListener('keydown', handleKeydown);
+        canvas.addEventListener('click', handleInteraction);
+        canvas.addEventListener('touchstart', handleInteraction); // Handle touch taps
 
-        // Start the game when the window loads
-        window.onload = initGame;
+        // Initial setup: Show the start screen and reset variables
+        window.onload = () => {
+            resetGameLogic();
+            showOverlay('Snake Game', false); // Show start message
+        };
     </script>
 </body>
 </html>
-
