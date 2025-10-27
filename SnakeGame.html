@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Snake</title>
+    <!-- Load Tailwind CSS for utility classes -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom CSS for the Game Board and Grid Pattern */
+        :root {
+            --game-board-color: #a2d149; /* Light green board */
+            --grid-line-color: rgba(0, 0, 0, 0.08);
+            --snake-color: #4a90e2; /* Blue snake */
+            --apple-color: #e74c3c; /* Red apple */
+            --tile-size: 20px;
+            --grid-size: 20;
+            --board-dimension: calc(var(--tile-size) * var(--grid-size));
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #2c3e50; /* Dark background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .game-container {
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            border-radius: 12px;
+            overflow: hidden; /* important to contain the canvas shadow */
+        }
+
+        #gameCanvas {
+            width: var(--board-dimension);
+            height: var(--board-dimension);
+            background-color: var(--game-board-color);
+            /* Create the subtle grid pattern using repeating linear gradients */
+            background-image: 
+                repeating-linear-gradient(0deg, var(--grid-line-color), var(--grid-line-color) 1px, transparent 1px, transparent calc(var(--tile-size) - 1px)),
+                repeating-linear-gradient(90deg, var(--grid-line-color), var(--grid-line-color) 1px, transparent 1px, transparent calc(var(--tile-size) - 1px));
+            background-size: var(--tile-size) var(--tile-size);
+            border: 4px solid #34495e; /* Dark border for definition */
+            display: block;
+        }
+
+        .snake-segment {
+            border-radius: 5px; /* Rounded corners for the snake segments */
+        }
+
+        .message-box {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .restart-button {
+            background-color: #f39c12;
+            color: white;
+            padding: 10px 20px;
+            margin-top: 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            border: none;
+        }
+
+        .restart-button:hover {
+            background-color: #e67e22;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .apple-pulse {
+            animation: pulse 0.5s ease-out;
+        }
+    </style>
+</head>
+<body class="selection:bg-yellow-400 selection:text-black">
+
+    <div class="game-container w-full max-w-sm flex flex-col items-center p-4 bg-gray-800 rounded-xl">
+        
+        <!-- Score Display -->
+        <div id="score" class="text-white text-xl font-bold mb-4 flex items-center justify-between w-full max-w-[var(--board-dimension)]">
+            <span class="p-2 bg-gray-700 rounded-lg shadow-md">
+                🍎 Score: 0
+            </span>
+            <span id="game-status" class="text-yellow-400 text-sm italic"></span>
+        </div>
+
+        <!-- Canvas and Game Overlay -->
+        <div id="canvas-wrapper" class="relative">
+            <canvas id="gameCanvas"></canvas>
+
+            <!-- Game Over Message Box -->
+            <div id="messageBox" class="message-box hidden rounded-lg">
+                <h2 class="text-4xl font-extrabold mb-4">Game Over!</h2>
+                <p class="text-xl">Final Score: <span id="finalScore">0</span></p>
+                <button id="restartButton" class="restart-button">Restart Game</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Game Constants and Setup ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const messageBox = document.getElementById('messageBox');
+        const restartButton = document.getElementById('restartButton');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const gameStatus = document.getElementById('game-status');
+
+        const TILE_SIZE = 20; // Pixel size of each tile
+        const GRID_SIZE = 20; // Number of tiles in one dimension (20x20 grid)
+        const GAME_SPEED = 100; // Milliseconds per move step
+        
+        // Set canvas dimensions based on constants
+        canvas.width = TILE_SIZE * GRID_SIZE;
+        canvas.height = TILE_SIZE * GRID_SIZE;
+
+        // Colors
+        const SNAKE_COLOR = 'var(--snake-color)';
+        const APPLE_COLOR = 'var(--apple-color)';
+
+        // Game state variables
+        let snake;
+        let food;
+        let direction;
+        let score;
+        let isGameOver;
+        let lastMoveTime;
+        let nextDirection; // Buffer for direction changes
+
+        // requestAnimationFrame variables
+        let gameLoopId;
+
+        // --- Utility Functions ---
+
+        /**
+         * Converts grid coordinates (x, y) to canvas pixel coordinates.
+         * @param {number} p Grid position.
+         * @returns {number} Canvas pixel position.
+         */
+        const toPixels = (p) => p * TILE_SIZE;
+
+        /**
+         * Generates a random, unoccupied grid coordinate for the food.
+         */
+        function generateFood() {
+            let newFood;
+            do {
+                newFood = {
+                    x: Math.floor(Math.random() * GRID_SIZE),
+                    y: Math.floor(Math.random() * GRID_SIZE)
+                };
+            } while (snake.some(segment => segment.x === newFood.x && segment.y === newFood.y));
+            food = newFood;
+        }
+
+        /**
+         * Initializes the game state.
+         */
+        function initGame() {
+            // Initial snake position (center-ish)
+            snake = [
+                { x: Math.floor(GRID_SIZE / 2) + 2, y: Math.floor(GRID_SIZE / 2) },
+                { x: Math.floor(GRID_SIZE / 2) + 1, y: Math.floor(GRID_SIZE / 2) },
+                { x: Math.floor(GRID_SIZE / 2), y: Math.floor(GRID_SIZE / 2) }
+            ];
+            direction = { x: 1, y: 0 }; // Start moving right
+            nextDirection = { x: 1, y: 0 };
+            score = 0;
+            isGameOver = false;
+            lastMoveTime = performance.now();
+            messageBox.classList.add('hidden');
+            scoreDisplay.children[0].textContent = `🍎 Score: ${score}`;
+            gameStatus.textContent = "Use Arrow Keys";
+
+            generateFood();
+
+            // Clear any previous animation frames and start the new loop
+            if (gameLoopId) {
+                cancelAnimationFrame(gameLoopId);
+            }
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        // --- Drawing Functions ---
+
+        /**
+         * Draws the current game state (snake and food) on the canvas.
+         */
+        function draw() {
+            // Clear the canvas area
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Food
+            ctx.fillStyle = APPLE_COLOR;
+            ctx.beginPath();
+            // Draw a slightly rounded square for the apple
+            const foodX = toPixels(food.x);
+            const foodY = toPixels(food.y);
+            const radius = 4; // Corner radius for the apple
+            
+            ctx.moveTo(foodX + radius, foodY);
+            ctx.lineTo(foodX + TILE_SIZE - radius, foodY);
+            ctx.arc(foodX + TILE_SIZE - radius, foodY + radius, radius, 1.5 * Math.PI, 0);
+            ctx.lineTo(foodX + TILE_SIZE, foodY + TILE_SIZE - radius);
+            ctx.arc(foodX + TILE_SIZE - radius, foodY + TILE_SIZE - radius, radius, 0, 0.5 * Math.PI);
+            ctx.lineTo(foodX + radius, foodY + TILE_SIZE);
+            ctx.arc(foodX + radius, foodY + TILE_SIZE - radius, radius, 0.5 * Math.PI, Math.PI);
+            ctx.lineTo(foodX, foodY + radius);
+            ctx.arc(foodX + radius, foodY + radius, radius, Math.PI, 1.5 * Math.PI);
+            ctx.fill();
+
+
+            // Draw Snake
+            snake.forEach((segment, index) => {
+                // Determine color: slightly darker head
+                ctx.fillStyle = index === 0 ? '#3c79c8' : SNAKE_COLOR; 
+                
+                // Draw a rounded rectangle for each segment
+                const x = toPixels(segment.x);
+                const y = toPixels(segment.y);
+                const radius = 3; // Corner radius for segments
+
+                ctx.beginPath();
+                ctx.moveTo(x + radius, y);
+                ctx.lineTo(x + TILE_SIZE - radius, y);
+                ctx.arc(x + TILE_SIZE - radius, y + radius, radius, 1.5 * Math.PI, 0);
+                ctx.lineTo(x + TILE_SIZE, y + TILE_SIZE - radius);
+                ctx.arc(x + TILE_SIZE - radius, y + TILE_SIZE - radius, radius, 0, 0.5 * Math.PI);
+                ctx.lineTo(x + radius, y + TILE_SIZE);
+                ctx.arc(x + radius, y + TILE_SIZE - radius, radius, 0.5 * Math.PI, Math.PI);
+                ctx.lineTo(x, y + radius);
+                ctx.arc(x + radius, y + radius, radius, Math.PI, 1.5 * Math.PI);
+                ctx.fill();
+            });
+        }
+
+        /**
+         * Updates the score display.
+         * @param {number} newScore The current score.
+         */
+        function updateScore(newScore) {
+            scoreDisplay.children[0].textContent = `🍎 Score: ${newScore}`;
+            // Simple animation on eating food
+            scoreDisplay.children[0].classList.add('apple-pulse');
+            setTimeout(() => {
+                scoreDisplay.children[0].classList.remove('apple-pulse');
+            }, 500);
+        }
+
+        // --- Game Logic ---
+
+        /**
+         * Checks if the snake has collided with the wall or itself.
+         * @param {Object} head The new head position.
+         * @returns {boolean} True if a collision occurred.
+         */
+        function checkCollision(head) {
+            // Wall collision
+            if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE) {
+                return true;
+            }
+
+            // Self-collision (check head against all body segments)
+            for (let i = 1; i < snake.length; i++) {
+                if (head.x === snake[i].x && head.y === snake[i].y) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /**
+         * Main game update logic, called every GAME_SPEED interval.
+         */
+        function updateGame() {
+            if (isGameOver) return;
+
+            // Update direction with buffered input
+            direction = nextDirection;
+
+            // Calculate the new head position
+            const newHead = {
+                x: snake[0].x + direction.x,
+                y: snake[0].y + direction.y
+            };
+
+            // Check for collisions
+            if (checkCollision(newHead)) {
+                gameOver();
+                return;
+            }
+
+            // Add the new head to the snake
+            snake.unshift(newHead);
+
+            // Check if the snake ate the food
+            if (newHead.x === food.x && newHead.y === food.y) {
+                score++;
+                updateScore(score);
+                // The snake grows by NOT removing the tail
+                generateFood();
+            } else {
+                // Remove the tail if no food was eaten
+                snake.pop();
+            }
+            
+            // Draw the new state
+            draw();
+        }
+
+        /**
+         * The main game animation loop using requestAnimationFrame.
+         */
+        function gameLoop(currentTime) {
+            if (isGameOver) return;
+
+            gameLoopId = requestAnimationFrame(gameLoop);
+
+            // Control game logic speed
+            if (currentTime - lastMoveTime > GAME_SPEED) {
+                lastMoveTime = currentTime;
+                updateGame();
+            }
+        }
+
+        /**
+         * Displays the game over message and stops the game.
+         */
+        function gameOver() {
+            isGameOver = true;
+            cancelAnimationFrame(gameLoopId);
+            finalScoreDisplay.textContent = score;
+            gameStatus.textContent = "Hit wall or yourself!";
+            messageBox.classList.remove('hidden');
+        }
+
+        // --- Event Handlers ---
+
+        /**
+         * Handles arrow key presses for direction change.
+         */
+        function handleKeydown(event) {
+            // Prevent snake from reversing immediately (e.g., going left when moving right)
+            const newDir = { x: 0, y: 0 };
+            
+            switch (event.key) {
+                case 'ArrowUp':
+                    if (direction.y === 0) newDir.y = -1;
+                    break;
+                case 'ArrowDown':
+                    if (direction.y === 0) newDir.y = 1;
+                    break;
+                case 'ArrowLeft':
+                    if (direction.x === 0) newDir.x = -1;
+                    break;
+                case 'ArrowRight':
+                    if (direction.x === 0) newDir.x = 1;
+                    break;
+                default:
+                    return; // Ignore other keys
+            }
+
+            if (newDir.x !== 0 || newDir.y !== 0) {
+                nextDirection = newDir;
+                event.preventDefault(); // Stop scrolling the page
+            }
+        }
+
+        // --- Initialization ---
+
+        restartButton.addEventListener('click', initGame);
+        window.addEventListener('keydown', handleKeydown);
+
+        // Start the game when the window loads
+        window.onload = initGame;
+    </script>
+</body>
+</html>
