@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avoid the Obstacles Racing Game</title>
+    <!-- Load Tailwind CSS for utility classes -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* --- CSS Variables --- */
+        :root {
+            --road-width: 400px;
+            --road-height: 600px;
+            --road-color: #34495e; /* Dark asphalt */
+            --lane-color: #ecf0f1; /* White dashed lines */
+            --grass-color: #27ae60; /* Green grass */
+            --car-color: #e74c3c; /* Player car color - Red */
+        }
+
+        /* --- Global Styling --- */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #2c3e50; /* Primary background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .game-container {
+            position: relative;
+            width: var(--road-width);
+            height: var(--road-height);
+            background-color: var(--grass-color); /* Grass background */
+            border: 8px solid #34495e;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        /* --- Road and Lines --- */
+        #road {
+            position: absolute;
+            width: 80%; /* Road takes 80% of container width */
+            height: 100%;
+            background-color: var(--road-color);
+            left: 10%; /* Center the road */
+        }
+        
+        /* Shoulder lines (road boundaries) */
+        #leftShoulder, #rightShoulder {
+            position: absolute; width: 10px; height: 100%; background-color: var(--lane-color); z-index: 2;
+        }
+        #leftShoulder { left: -10px; }
+        #rightShoulder { right: -10px; }
+        
+        /* --- Player Car Styling --- */
+        #playerCar {
+            position: absolute; 
+            width: 40px; 
+            height: 60px; 
+            background-color: var(--car-color); 
+            border-radius: 6px; 
+            z-index: 5;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+            transition: left 0.1s ease-out; 
+            bottom: 50px; /* Fixed vertical position near the bottom */
+        }
+
+        /* Car Windows/Details */
+        #playerCar::before {
+            content: '';
+            position: absolute;
+            top: 5px; left: 5px; right: 5px; height: 15px;
+            background: #2c3e50; 
+            border-radius: 2px;
+        }
+        #playerCar::after {
+            content: '';
+            position: absolute;
+            bottom: 3px; left: 2px; right: 2px; height: 5px;
+            background: #f1c40f; 
+            border-radius: 1px;
+        }
+
+        /* --- UI Elements (Score and Message) --- */
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            background-color: #3498db; 
+            color: #fff;
+            padding: 8px 15px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 1.5rem;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        #messageBox {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.95);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 20;
+            padding: 20px;
+        }
+
+        #messageBox h2 {
+            font-size: 3.5rem;
+            color: #e74c3c; 
+            text-shadow: 2px 2px 5px #000;
+        }
+        
+        .restart-button {
+            background-color: #2ecc71;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            box-shadow: 0 4px 0 #27ae60;
+        }
+
+        .restart-button:hover {
+            background-color: #27ae60;
+        }
+    </style>
+</head>
+<body class="selection:bg-green-400 selection:text-black">
+
+    <div class="game-container">
+        <div id="road" class="relative">
+            <!-- Road Shoulder Lines -->
+            <div id="leftShoulder"></div>
+            <div id="rightShoulder"></div>
+            
+            <div id="playerCar"></div>
+            
+            <div id="score">SCORE: 0</div>
+            
+            <div id="messageBox" style="display: none;">
+                <!-- Content injected by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio Elements: Using highly reliable public domain sources -->
+    <audio id="bgMusic" src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/163820/Synth_Buster_Loop.mp3" preload="auto" loop></audio>
+    <audio id="engineSound" src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/163820/car_engine_idle_loop.mp3" preload="auto" loop></audio>
+    <audio id="crashSound" src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/163820/car_crash.mp3" preload="auto"></audio>
+    <audio id="buttonSound" src="https://www.soundjay.com/button/button-3.mp3" preload="auto"></audio>
+
+    <script>
+        // --- Game Constants and Setup ---
+        const ROAD_WIDTH = 400;
+        const ROAD_HEIGHT = 600;
+        const CAR_WIDTH = 40;
+        const CAR_HEIGHT = 60;
+        const INITIAL_SPEED = 2.5; 
+        const DIFFICULTY_RATE = 0.000007; // Rate at which speed increases
+        const OBSTACLE_SPAWN_INTERVAL = 1100; // Base interval for spawning
+
+        // DOM Elements
+        const road = document.getElementById('road');
+        const playerCar = document.getElementById('playerCar');
+        const scoreDisplay = document.getElementById('score');
+        const messageBox = document.getElementById('messageBox');
+        
+        // Audio Elements
+        const bgMusic = document.getElementById('bgMusic');
+        const engineSound = document.getElementById('engineSound');
+        const crashSound = document.getElementById('crashSound');
+        const buttonSound = document.getElementById('buttonSound');
+
+        // Game State
+        let gameState = {
+            isRunning: false,
+            score: 0,
+            speed: INITIAL_SPEED,
+            carX: ROAD_WIDTH * 0.5 - CAR_WIDTH / 2, // Player car X position
+            obstacles: [],
+            roadLines: [],
+            lastSpawnTime: 0,
+            lastFrameTime: 0,
+            difficultyTimer: 0
+        };
+
+        // --- Utility Functions ---
+
+        /**
+         * Robustly plays an audio element with specified volume.
+         */
+        function playAudio(audioElement, volume) {
+            audioElement.volume = volume;
+            audioElement.currentTime = 0; // Rewind for sound effects
+            audioElement.play().catch(error => {
+                // Autoplay blocked warning
+                console.warn("Audio playback blocked. Please interact with the screen to enable sound.");
+            });
+        }
+        
+        /**
+         * Initializes and starts the game.
+         */
+        function startGame() {
+            // Stop any previous sounds
+            bgMusic.pause();
+            engineSound.pause();
+            
+            // 1. Play Audio (High Volume BG Music, Medium Engine Sound)
+            playAudio(bgMusic, 1.0); // 100% volume
+            playAudio(engineSound, 0.5); // 50% volume
+            playAudio(buttonSound, 1.0); // Confirmation sound
+
+            // 2. Reset Game State
+            gameState.isRunning = true;
+            gameState.score = 0;
+            gameState.speed = INITIAL_SPEED;
+            gameState.obstacles = [];
+            gameState.roadLines = [];
+            gameState.lastSpawnTime = 0;
+            gameState.difficultyTimer = 0;
+            
+            // Center the car
+            gameState.carX = ROAD_WIDTH * 0.5 - CAR_WIDTH / 2; 
+
+            // Initialize road lines (Scrolling effect base)
+            gameState.roadLines = [];
+            for (let i = -3; i < 10; i++) { 
+                gameState.roadLines.push({
+                    y: i * 100, 
+                    el: createLaneLine(i * 100)
+                });
+            }
+
+            // Reset UI
+            messageBox.style.display = 'none';
+            playerCar.style.left = `${gameState.carX}px`;
+            playerCar.style.backgroundColor = 'var(--car-color)'; // Reset car color
+            scoreDisplay.textContent = 'SCORE: 0';
+            
+            // Clear previous obstacles
+            document.querySelectorAll('.obstacle').forEach(el => el.remove());
+
+            // Start the game loop
+            requestAnimationFrame(gameLoop);
+        }
+
+        /**
+         * Stops the game and displays the Game Over screen.
+         */
+        function gameOver() {
+            gameState.isRunning = false;
+
+            // Stop music and play crash sound
+            bgMusic.pause();
+            engineSound.pause();
+            playAudio(crashSound, 1.0); // 100% volume crash sound
+
+            // Display message box
+            messageBox.innerHTML = `
+                <h2>CRASH! Game Over</h2>
+                <p>Final Score: <span class="text-yellow-400 font-extrabold">${Math.floor(gameState.score)}</span></p>
+                <button id="restartButton" class="restart-button">Restart Game</button>
+            `;
+            messageBox.style.display = 'flex';
+            
+            document.getElementById('restartButton').addEventListener('click', startGame);
+        }
+
+        // --- Drawing and DOM Management ---
+        
+        /**
+         * Creates a new obstacle DOM element (opponent car).
+         */
+        function createObstacle(x, y) {
+            const el = document.createElement('div');
+            el.className = 'obstacle';
+            const randomColor = ['#f39c12', '#9b59b6', '#1abc9c', '#3498db'][Math.floor(Math.random() * 4)];
+            
+            el.style.cssText = `
+                position: absolute;
+                width: ${CAR_WIDTH}px;
+                height: ${CAR_HEIGHT}px;
+                background-color: ${randomColor}; 
+                border-radius: 6px;
+                top: ${y}px;
+                left: ${x}px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+                z-index: 4;
+            `;
+            // Add simple window detail to obstacle
+            el.innerHTML = `<div style="position: absolute; top: 5px; left: 5px; right: 5px; height: 15px; background: #2c3e50; border-radius: 2px;"></div>`;
+
+            road.appendChild(el);
+            return el;
+        }
+
+        /**
+         * Creates a lane line element.
+         */
+        function createLaneLine(y) {
+            const el = document.createElement('div');
+            el.className = 'lane-line';
+            el.style.cssText = `
+                position: absolute;
+                width: 10px;
+                height: 50px;
+                background-color: var(--lane-color);
+                left: ${ROAD_WIDTH * 0.5 - 5}px; /* Center of the 80% road width */
+                top: ${y}px;
+                border-radius: 2px;
+                z-index: 1;
+            `;
+            road.appendChild(el);
+            return el;
+        }
+
+        // --- Game Logic Updates ---
+        
+        /**
+         * Spawns obstacles and road lines.
+         */
+        function spawnElements(currentTime) {
+            // 1. Spawn Obstacles: Frequency increases with speed
+            if (currentTime - gameState.lastSpawnTime > OBSTACLE_SPAWN_INTERVAL / gameState.speed) {
+                const laneIndex = Math.floor(Math.random() * 3); // 3 lanes
+                
+                // Calculate X position based on 80% road width
+                const roadSectionWidth = ROAD_WIDTH * 0.8;
+                const laneWidth = roadSectionWidth / 3;
+                const laneXOffset = ROAD_WIDTH * 0.1; // 10% container offset
+                
+                const x = laneXOffset + (laneIndex * laneWidth) + (laneWidth / 2) - (CAR_WIDTH / 2);
+
+                const newObstacle = {
+                    x: x,
+                    y: -CAR_HEIGHT, // Spawn off-screen top
+                    el: createObstacle(x, -CAR_HEIGHT)
+                };
+                gameState.obstacles.push(newObstacle);
+                gameState.lastSpawnTime = currentTime;
+            }
+        }
+        
+        /**
+         * Updates the position of all scrolling elements.
+         */
+        function updateScrollingElements(deltaTime) {
+            const scrollDistance = gameState.speed * deltaTime;
+
+            // Update Road Lines (Center dashed line)
+            for (let i = gameState.roadLines.length - 1; i >= 0; i--) {
+                const line = gameState.roadLines[i];
+                line.y += scrollDistance;
+                line.el.style.top = `${line.y}px`;
+
+                // Remove line if off-screen bottom
+                if (line.y > ROAD_HEIGHT) {
+                    line.el.remove();
+                    gameState.roadLines.splice(i, 1);
+                    // Re-add line off-screen top to maintain loop
+                    const newLine = {
+                        y: -50,
+                        el: createLaneLine(-50)
+                    };
+                    gameState.roadLines.push(newLine);
+                }
+            }
+
+            // Update Obstacles
+            for (let i = gameState.obstacles.length - 1; i >= 0; i--) {
+                const obs = gameState.obstacles[i];
+                obs.y += scrollDistance;
+                obs.el.style.top = `${obs.y}px`;
+
+                // Remove obstacle if off-screen bottom
+                if (obs.y > ROAD_HEIGHT) {
+                    obs.el.remove();
+                    gameState.obstacles.splice(i, 1);
+                }
+            }
+        }
+        
+        /**
+         * Checks for collision between the player car and any obstacle OR the road boundaries.
+         */
+        function checkCollision() {
+            // Player car coordinates (vertical position is fixed)
+            const playerTop = ROAD_HEIGHT - 50 - CAR_HEIGHT;
+            const playerBottom = ROAD_HEIGHT - 50;
+            const playerLeft = gameState.carX;
+            const playerRight = gameState.carX + CAR_WIDTH;
+            
+            // --- 1. Road Boundary Collision (Game Over if on grass) ---
+            const minRoadX = ROAD_WIDTH * 0.1; // Left edge of the asphalt
+            const maxRoadX = ROAD_WIDTH * 0.9; // Right edge of the asphalt
+
+            if (playerLeft < minRoadX || playerRight > maxRoadX) {
+                 return true; // Hit the grass
+            }
+
+            // --- 2. Obstacle Collision ---
+            for (const obs of gameState.obstacles) {
+                const obsTop = obs.y;
+                const obsBottom = obs.y + CAR_HEIGHT;
+                const obsLeft = obs.x;
+                const obsRight = obs.x + CAR_WIDTH;
+
+                // AABB Collision Check (Overlap on X and Y)
+                const isCollidingX = playerLeft < obsRight && playerRight > obsLeft;
+                const isCollidingY = playerTop < obsBottom && playerBottom > obsTop;
+
+                if (isCollidingX && isCollidingY) {
+                    // Visual feedback for collision
+                    obs.el.style.backgroundColor = '#f1c40f'; 
+                    playerCar.style.backgroundColor = '#f1c40f'; 
+                    return true; // Hit an obstacle
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Main game loop using requestAnimationFrame for smooth animation.
+         */
+        function gameLoop(currentTime) {
+            if (!gameState.isRunning) {
+                return;
+            }
+
+            // Time difference calculation for framerate independence
+            if (gameState.lastFrameTime === 0) {
+                gameState.lastFrameTime = currentTime;
+            }
+            const deltaTime = (currentTime - gameState.lastFrameTime) / 16.666; 
+            gameState.lastFrameTime = currentTime;
+            
+            // 1. Difficulty & Score Update
+            gameState.score += gameState.speed * deltaTime * 0.1; 
+            gameState.difficultyTimer += deltaTime;
+            
+            // Gradually increase speed over time
+            gameState.speed = INITIAL_SPEED + (gameState.difficultyTimer * DIFFICULTY_RATE * 1000); 
+            
+            scoreDisplay.textContent = `SCORE: ${Math.floor(gameState.score)}`;
+
+            // 2. Spawn and Move Elements
+            spawnElements(currentTime);
+            updateScrollingElements(deltaTime);
+
+            // 3. Collision Check
+            if (checkCollision()) {
+                gameOver();
+                return;
+            }
+
+            // 4. Continue Loop
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- Input Handling ---
+
+        /**
+         * Moves the player car horizontally.
+         */
+        function moveCar(deltaX) {
+            if (!gameState.isRunning) return;
+            
+            const newX = gameState.carX + deltaX;
+            gameState.carX = newX;
+            playerCar.style.left = `${gameState.carX}px`;
+        }
+
+        // Keyboard Input (Arrow Keys and A/D)
+        document.addEventListener('keydown', (e) => {
+            const movementSpeed = 30; 
+            
+            if (gameState.isRunning) {
+                if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') {
+                    moveCar(-movementSpeed);
+                } else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') {
+                    moveCar(movementSpeed);
+                }
+            } else {
+                 // Restart/Start Game using Enter/Space
+                 const startButton = document.getElementById('startButton') || document.getElementById('restartButton');
+                 if (startButton && (e.key === 'Enter' || e.key === ' ')) {
+                    startButton.click();
+                 }
+            }
+            e.preventDefault(); 
+        });
+        
+        // Touch/Click Input (Simplified lane switching for mobile)
+        road.addEventListener('click', (e) => {
+            // Check if game is not running, and if the click is on the start button
+            if (!gameState.isRunning && e.target.id !== 'startButton' && e.target.id !== 'restartButton') {
+                return; // Prevent accidental start/restart from touch
+            }
+
+            // Game is running, handle movement
+            if (gameState.isRunning) {
+                const roadRect = road.getBoundingClientRect();
+                const clickX = e.clientX - roadRect.left;
+                
+                const roadCenter = ROAD_WIDTH * 0.5;
+                const movementSpeed = 50;
+
+                if (clickX < roadCenter) {
+                    moveCar(-movementSpeed);
+                } else {
+                    moveCar(movementSpeed);
+                }
+            }
+        });
+
+
+        // --- Initialization ---
+
+        window.onload = () => {
+            // Initial car position
+            playerCar.style.left = `${ROAD_WIDTH * 0.5 - CAR_WIDTH / 2}px`;
+            
+            // Show initial start screen to handle audio autoplay policy
+            messageBox.style.display = 'flex';
+            messageBox.innerHTML = `
+                <h2 class="text-white text-5xl font-extrabold mb-4">Obstacle Race</h2>
+                <p class="text-lg">Use Arrow Keys (Left/Right) or A/D to drive.</p>
+                <p class="text-base font-bold text-yellow-400 mt-2">DANGER: Do not drive onto the grass!</p>
+                <button id="startButton" class="restart-button mt-10">Start Racing</button>
+            `;
+            
+            // Start Game on first click/tap to bypass audio restrictions
+            document.getElementById('startButton').addEventListener('click', startGame);
+        };
+    </script>
+</body>
+</html>
