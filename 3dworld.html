@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Island Explorer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        #gameContainer {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 20px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        #ui div {
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+        }
+
+        #ui .icon {
+            margin-right: 10px;
+            font-size: 24px;
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        #instructions.hidden {
+            display: none;
+        }
+
+        #startScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.95) 0%, rgba(118, 75, 162, 0.95) 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 100;
+        }
+
+        #startScreen.hidden {
+            display: none;
+        }
+
+        h1 {
+            font-size: 64px;
+            margin-bottom: 20px;
+            text-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+
+        button {
+            padding: 18px 50px;
+            font-size: 24px;
+            background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
+            border: none;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 50px;
+            margin: 10px;
+            transition: all 0.3s;
+            box-shadow: 0 8px 25px rgba(245, 87, 108, 0.4);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        button:hover {
+            transform: translateY(-5px) scale(1.05);
+            box-shadow: 0 12px 35px rgba(245, 87, 108, 0.6);
+        }
+
+        .subtitle {
+            font-size: 20px;
+            margin: 20px 0;
+            opacity: 0.9;
+        }
+
+        .controls-list {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 30px;
+            border-radius: 20px;
+            margin-top: 30px;
+            backdrop-filter: blur(10px);
+        }
+
+        .controls-list div {
+            margin: 12px 0;
+            font-size: 18px;
+        }
+
+        .key {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 5px 15px;
+            border-radius: 8px;
+            margin: 0 5px;
+            font-weight: bold;
+        }
+
+        #minimap {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 200px;
+            height: 200px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+
+        #collectionCount {
+            position: absolute;
+            top: 240px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            font-size: 18px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .victory {
+            font-size: 28px;
+            color: #4ade80;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="startScreen">
+            <h1>🏝️ ISLAND EXPLORER 🏝️</h1>
+            <div class="subtitle">Explore the mystical island and collect all the gems!</div>
+            <button id="startBtn">START ADVENTURE</button>
+            <div class="controls-list">
+                <div><span class="key">W A S D</span> or <span class="key">Arrow Keys</span> - Move</div>
+                <div><span class="key">Mouse</span> - Look Around</div>
+                <div><span class="key">Space</span> - Jump</div>
+                <div><span class="key">Shift</span> - Sprint</div>
+                <div style="margin-top: 20px; color: #fbbf24;">Collect all 10 gems to win!</div>
+            </div>
+        </div>
+
+        <div id="ui">
+            <div><span class="icon">⏱️</span> Time: <span id="time">0</span>s</div>
+            <div><span class="icon">💎</span> Gems: <span id="gems">0</span>/10</div>
+            <div><span class="icon">📍</span> Position: (<span id="posX">0</span>, <span id="posZ">0</span>)</div>
+        </div>
+
+        <canvas id="minimap"></canvas>
+        
+        <div id="collectionCount"></div>
+
+        <div id="instructions">
+            <strong>WASD/Arrows:</strong> Move | <strong>Mouse:</strong> Look | <strong>Space:</strong> Jump | <strong>Shift:</strong> Sprint
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, player;
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let canJump = false, velocity = new THREE.Vector3(), direction = new THREE.Vector3();
+        let prevTime = performance.now();
+        let collectibles = [];
+        let collectedCount = 0;
+        let gameStartTime = 0;
+        let isSprinting = false;
+        let isGameStarted = false;
+
+        // Audio
+        let audioCtx, bgMusicPlaying = false;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playBackgroundMusic() {
+            if (bgMusicPlaying) return;
+            bgMusicPlaying = true;
+            
+            const melody = [523.25, 587.33, 659.25, 783.99, 659.25, 587.33];
+            let noteIdx = 0;
+            
+            function playNote() {
+                if (!bgMusicPlaying) return;
+                
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.value = melody[noteIdx % melody.length];
+                gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                osc.start(audioCtx.currentTime);
+                osc.stop(audioCtx.currentTime + 0.5);
+                
+                noteIdx++;
+                setTimeout(playNote, 400);
+            }
+            
+            playNote();
+        }
+
+        function playCollectSound() {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.frequency.value = 800;
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start(audioCtx.currentTime);
+            osc.stop(audioCtx.currentTime + 0.2);
+        }
+
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.Fog(0x87ceeb, 50, 200);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 10, 20);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('gameContainer').appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            sunLight.position.set(50, 100, 50);
+            sunLight.castShadow = true;
+            sunLight.shadow.camera.left = -100;
+            sunLight.shadow.camera.right = 100;
+            sunLight.shadow.camera.top = 100;
+            sunLight.shadow.camera.bottom = -100;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            scene.add(sunLight);
+
+            // Ground
+            const groundGeometry = new THREE.PlaneGeometry(200, 200, 50, 50);
+            const vertices = groundGeometry.attributes.position.array;
+            for (let i = 0; i < vertices.length; i += 3) {
+                vertices[i + 2] = Math.sin(vertices[i] / 5) * Math.cos(vertices[i + 1] / 5) * 2;
+            }
+            groundGeometry.computeVertexNormals();
+
+            const groundMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x3a9f3f,
+                flatShading: true
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Water
+            const waterGeometry = new THREE.CircleGeometry(30, 32);
+            const waterMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x1e90ff,
+                transparent: true,
+                opacity: 0.7
+            });
+            const water = new THREE.Mesh(waterGeometry, waterMaterial);
+            water.rotation.x = -Math.PI / 2;
+            water.position.set(40, 0.1, -40);
+            scene.add(water);
+
+            // Trees
+            for (let i = 0; i < 30; i++) {
+                const tree = createTree();
+                tree.position.set(
+                    Math.random() * 160 - 80,
+                    0,
+                    Math.random() * 160 - 80
+                );
+                if (tree.position.distanceTo(new THREE.Vector3(0, 0, 20)) > 15) {
+                    scene.add(tree);
+                }
+            }
+
+            // Mountains
+            for (let i = 0; i < 5; i++) {
+                const mountain = createMountain();
+                mountain.position.set(
+                    Math.random() * 140 - 70,
+                    0,
+                    Math.random() * 140 - 70
+                );
+                scene.add(mountain);
+            }
+
+            // Collectible gems
+            const gemPositions = [
+                [30, 2, 10], [-20, 2, 30], [40, 2, -20], [-30, 2, -30],
+                [50, 2, 40], [-40, 2, 20], [20, 2, -40], [0, 2, -50],
+                [60, 2, 0], [-50, 2, -10]
+            ];
+
+            gemPositions.forEach(pos => {
+                const gem = createGem();
+                gem.position.set(pos[0], pos[1], pos[2]);
+                collectibles.push(gem);
+                scene.add(gem);
+            });
+
+            // Player (invisible but tracked)
+            player = new THREE.Object3D();
+            player.position.set(0, 5, 20);
+            scene.add(player);
+            camera.position.copy(player.position);
+
+            // Controls
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('click', () => {
+                renderer.domElement.requestPointerLock();
+            });
+
+            // Start button
+            document.getElementById('startBtn').addEventListener('click', startGame);
+
+            // Window resize
+            window.addEventListener('resize', onWindowResize);
+
+            // Draw minimap
+            drawMinimap();
+        }
+
+        function createTree() {
+            const tree = new THREE.Group();
+            
+            const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.7, 5, 8);
+            const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.y = 2.5;
+            trunk.castShadow = true;
+            tree.add(trunk);
+            
+            const leavesGeometry = new THREE.SphereGeometry(3, 8, 8);
+            const leavesMaterial = new THREE.MeshLambertMaterial({ color: 0x228b22 });
+            const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+            leaves.position.y = 6;
+            leaves.scale.set(1, 1.2, 1);
+            leaves.castShadow = true;
+            tree.add(leaves);
+            
+            return tree;
+        }
+
+        function createMountain() {
+            const geometry = new THREE.ConeGeometry(10, 20, 6);
+            const material = new THREE.MeshLambertMaterial({ 
+                color: 0x808080,
+                flatShading: true
+            });
+            const mountain = new THREE.Mesh(geometry, material);
+            mountain.position.y = 10;
+            mountain.castShadow = true;
+            return mountain;
+        }
+
+        function createGem() {
+            const geometry = new THREE.OctahedronGeometry(1);
+            const material = new THREE.MeshLambertMaterial({ 
+                color: 0xff00ff,
+                emissive: 0xff00ff,
+                emissiveIntensity: 0.5
+            });
+            const gem = new THREE.Mesh(geometry, material);
+            gem.userData.collected = false;
+            gem.castShadow = true;
+            return gem;
+        }
+
+        function startGame() {
+            document.getElementById('startScreen').classList.add('hidden');
+            isGameStarted = true;
+            gameStartTime = performance.now();
+            initAudio();
+            playBackgroundMusic();
+            renderer.domElement.requestPointerLock();
+            animate();
+        }
+
+        function onKeyDown(event) {
+            switch (event.code) {
+                case 'ArrowUp':
+                case 'KeyW':
+                    moveForward = true;
+                    break;
+                case 'ArrowLeft':
+                case 'KeyA':
+                    moveLeft = true;
+                    break;
+                case 'ArrowDown':
+                case 'KeyS':
+                    moveBackward = true;
+                    break;
+                case 'ArrowRight':
+                case 'KeyD':
+                    moveRight = true;
+                    break;
+                case 'Space':
+                    if (canJump) velocity.y += 8;
+                    canJump = false;
+                    break;
+                case 'ShiftLeft':
+                case 'ShiftRight':
+                    isSprinting = true;
+                    break;
+            }
+        }
+
+        function onKeyUp(event) {
+            switch (event.code) {
+                case 'ArrowUp':
+                case 'KeyW':
+                    moveForward = false;
+                    break;
+                case 'ArrowLeft':
+                case 'KeyA':
+                    moveLeft = false;
+                    break;
+                case 'ArrowDown':
+                case 'KeyS':
+                    moveBackward = false;
+                    break;
+                case 'ArrowRight':
+                case 'KeyD':
+                    moveRight = false;
+                    break;
+                case 'ShiftLeft':
+                case 'ShiftRight':
+                    isSprinting = false;
+                    break;
+            }
+        }
+
+        let yaw = 0, pitch = 0;
+
+        function onMouseMove(event) {
+            if (document.pointerLockElement === renderer.domElement) {
+                yaw -= event.movementX * 0.002;
+                pitch -= event.movementY * 0.002;
+                pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function checkCollectibles() {
+            collectibles.forEach((gem, index) => {
+                if (!gem.userData.collected) {
+                    const distance = player.position.distanceTo(gem.position);
+                    if (distance < 3) {
+                        gem.userData.collected = true;
+                        scene.remove(gem);
+                        collectedCount++;
+                        playCollectSound();
+                        updateUI();
+                        
+                        if (collectedCount === 10) {
+                            setTimeout(() => {
+                                alert('🎉 Congratulations! You collected all gems! 🎉');
+                            }, 100);
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateUI() {
+            const time = Math.floor((performance.now() - gameStartTime) / 1000);
+            document.getElementById('time').textContent = time;
+            document.getElementById('gems').textContent = collectedCount;
+            document.getElementById('posX').textContent = Math.floor(player.position.x);
+            document.getElementById('posZ').textContent = Math.floor(player.position.z);
+            
+            const collectionDiv = document.getElementById('collectionCount');
+            if (collectedCount === 10) {
+                collectionDiv.innerHTML = '<div class="victory">🎉 ALL GEMS COLLECTED! 🎉</div>';
+            } else {
+                collectionDiv.innerHTML = `<div>💎 ${collectedCount} / 10 Gems</div>`;
+            }
+            
+            drawMinimap();
+        }
+
+        function drawMinimap() {
+            const canvas = document.getElementById('minimap');
+            const ctx = canvas.getContext('2d');
+            const size = 200;
+            canvas.width = size;
+            canvas.height = size;
+            
+            // Background
+            ctx.fillStyle = 'rgba(0, 50, 0, 0.8)';
+            ctx.fillRect(0, 0, size, size);
+            
+            // Scale
+            const scale = size / 200;
+            const centerX = size / 2;
+            const centerY = size / 2;
+            
+            // Gems
+            collectibles.forEach(gem => {
+                if (!gem.userData.collected) {
+                    const x = centerX + gem.position.x * scale;
+                    const y = centerY + gem.position.z * scale;
+                    ctx.fillStyle = '#ff00ff';
+                    ctx.beginPath();
+                    ctx.arc(x, y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+            
+            // Player
+            const playerX = centerX + player.position.x * scale;
+            const playerY = centerY + player.position.z * scale;
+            ctx.fillStyle = '#00ffff';
+            ctx.beginPath();
+            ctx.arc(playerX, playerY, 6, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Direction indicator
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(playerX, playerY);
+            ctx.lineTo(playerX - Math.sin(yaw) * 15, playerY - Math.cos(yaw) * 15);
+            ctx.stroke();
+        }
+
+        function animate() {
+            if (!isGameStarted) return;
+            requestAnimationFrame(animate);
+
+            const time = performance.now();
+            const delta = (time - prevTime) / 1000;
+
+            velocity.x -= velocity.x * 10.0 * delta;
+            velocity.z -= velocity.z * 10.0 * delta;
+            velocity.y -= 9.8 * 3 * delta;
+
+            direction.z = Number(moveForward) - Number(moveBackward);
+            direction.x = Number(moveRight) - Number(moveLeft);
+            direction.normalize();
+
+            const speed = isSprinting ? 30 : 20;
+
+            if (moveForward || moveBackward) velocity.z -= direction.z * speed * delta;
+            if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
+
+            // Apply movement
+            const forward = new THREE.Vector3(0, 0, -1);
+            forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+            const right = new THREE.Vector3(1, 0, 0);
+            right.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+
+            player.position.addScaledVector(forward, -velocity.z * delta);
+            player.position.addScaledVector(right, -velocity.x * delta);
+            player.position.y += velocity.y * delta;
+
+            // Ground collision
+            if (player.position.y < 5) {
+                velocity.y = 0;
+                player.position.y = 5;
+                canJump = true;
+            }
+
+            // Boundaries
+            player.position.x = Math.max(-90, Math.min(90, player.position.x));
+            player.position.z = Math.max(-90, Math.min(90, player.position.z));
+
+            // Camera follow
+            camera.position.copy(player.position);
+            camera.rotation.order = 'YXZ';
+            camera.rotation.y = yaw;
+            camera.rotation.x = pitch;
+
+            // Rotate gems
+            collectibles.forEach(gem => {
+                if (!gem.userData.collected) {
+                    gem.rotation.y += delta * 2;
+                    gem.position.y = 2 + Math.sin(time * 0.003 + gem.position.x) * 0.5;
+                }
+            });
+
+            checkCollectibles();
+            updateUI();
+
+            renderer.render(scene, camera);
+            prevTime = time;
+        }
+
+        init();
+    </script>
+</body>
+</html>
