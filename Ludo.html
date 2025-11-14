@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ludo Game (Pachisi)</title>
+    <!-- Load Tone.js for background sound -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <!-- Load Font Awesome for Dice Icon -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        :root {
+            --board-size: min(85vh, 85vw);
+            --square-size: calc(var(--board-size) / 15);
+            --red: #D93644;
+            --blue: #448CD9;
+            --yellow: #F2C94C;
+            --green: #27AE60;
+            --safe-color: #34495E; /* Dark blue/grey for stars */
+            --bg-color: #f0f4f8;
+            --text-color: #2c3e50;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: var(--text-color);
+        }
+
+        /* --- Main Layout --- */
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            max-width: 95vw;
+        }
+
+        .ludo-board {
+            display: grid;
+            grid-template-columns: repeat(15, var(--square-size));
+            grid-template-rows: repeat(15, var(--square-size));
+            width: var(--board-size);
+            height: var(--board-size);
+            border: 3px solid var(--text-color);
+            position: relative;
+            user-select: none;
+        }
+
+        /* --- Grid Cell Styling --- */
+        .square {
+            border: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.5rem;
+            position: relative;
+        }
+
+        /* --- Nests (Corners) --- */
+        .nest {
+            grid-column: span 6;
+            grid-row: span 6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 3px solid var(--text-color);
+        }
+        .nest-red { grid-area: 10 / 10 / 16 / 16; background-color: rgba(217, 54, 68, 0.2); }
+        .nest-yellow { grid-area: 1 / 10 / 7 / 16; background-color: rgba(242, 201, 76, 0.2); }
+        .nest-blue { grid-area: 10 / 1 / 16 / 7; background-color: rgba(68, 140, 217, 0.2); }
+        .nest-green { grid-area: 1 / 1 / 7 / 16; background-color: rgba(39, 174, 96, 0.2); }
+
+        .player-nest {
+            width: 80%;
+            height: 80%;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 10px;
+            padding: 10px;
+            border-radius: 10px;
+        }
+
+        .nest-red .player-nest { background-color: var(--red); }
+        .nest-yellow .player-nest { background-color: var(--yellow); }
+        .nest-blue .player-nest { background-color: var(--blue); }
+        .nest-green .player-nest { background-color: var(--green); }
+
+        .nest-goti-slot {
+            background-color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- Safe Squares (Stars) --- */
+        .safe-square::before {
+            content: "\f005"; /* Font Awesome Star Icon */
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            color: var(--safe-color);
+            font-size: 0.8rem;
+        }
+
+        .square.path-start-red { background-color: var(--red); }
+        .square.path-start-blue { background-color: var(--blue); }
+        .square.path-start-yellow { background-color: var(--yellow); }
+        .square.path-start-green { background-color: var(--green); }
+        
+        .safe-square.path-start-red::before { color: white; }
+        .safe-square.path-start-blue::before { color: white; }
+        .safe-square.path-start-yellow::before { color: white; }
+        .safe-square.path-start-green::before { color: white; }
+
+        /* --- Home Columns --- */
+        .home-red { background-color: rgba(217, 54, 68, 0.4); }
+        .home-blue { background-color: rgba(68, 140, 217, 0.4); }
+        .home-yellow { background-color: rgba(242, 201, 76, 0.4); }
+        .home-green { background-color: rgba(39, 174, 96, 0.4); }
+
+        /* Highlight the entry square to the home column */
+        .path-red-entry { background-color: var(--red) !important; }
+        .path-blue-entry { background-color: var(--blue) !important; }
+        .path-yellow-entry { background-color: var(--yellow) !important; }
+        .path-green-entry { background-color: var(--green) !important; }
+
+        /* --- Home Center (Triangle) --- */
+        .home-center {
+            grid-area: 7 / 7 / 10 / 10;
+            background: linear-gradient(135deg, var(--red) 25%, var(--yellow) 25%, var(--yellow) 50%, var(--blue) 50%, var(--blue) 75%, var(--green) 75%);
+            clip-path: polygon(50% 0%, 0% 100%, 100% 100%); /* Star shape is too complex, using triangle as final destination */
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2) inset;
+        }
+
+        /* --- Pieces (Goti) --- */
+        .piece {
+            position: absolute;
+            width: calc(var(--square-size) * 0.7);
+            height: calc(var(--square-size) * 0.7);
+            border-radius: 50%;
+            z-index: 50;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.6rem;
+            color: white;
+            font-weight: bold;
+        }
+
+        .piece.active-move {
+            transform: scale(1.1);
+            box-shadow: 0 0 15px 5px rgba(255, 255, 0, 0.8), 0 2px 8px rgba(0, 0, 0, 0.5);
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { opacity: 0.8; }
+            to { opacity: 1; }
+        }
+
+        .piece.red { background-color: var(--red); }
+        .piece.blue { background-color: var(--blue); }
+        .piece.yellow { background-color: var(--yellow); }
+        .piece.green { background-color: var(--green); }
+
+        /* --- Controls & Status --- */
+        .controls {
+            margin-top: 20px;
+            width: var(--board-size);
+            max-width: 400px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #status-message {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            width: 100%;
+            background-color: #ecf0f1;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        /* --- Dice Area --- */
+        #dice-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #roll-button {
+            padding: 12px 25px;
+            background-color: var(--safe-color);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            box-shadow: 0 4px 0 #2c3e50;
+        }
+
+        #roll-button:hover {
+            background-color: #4e657e;
+        }
+
+        #roll-button:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #2c3e50;
+        }
+
+        #dice-display {
+            width: 80px;
+            height: 80px;
+            border: 4px solid var(--text-color);
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            font-weight: 900;
+            background-color: white;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
+            transition: transform 0.1s;
+        }
+
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+            :root {
+                --board-size: 95vw;
+                --square-size: calc(var(--board-size) / 15);
+            }
+            .game-container {
+                padding: 10px;
+            }
+            #dice-display {
+                width: 60px;
+                height: 60px;
+                font-size: 2rem;
+            }
+            #roll-button {
+                padding: 10px 20px;
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-container">
+        <h1>Ludo</h1>
+        <div id="status-message">Click 'Start Game' to begin.</div>
+
+        <div class="ludo-board" id="ludo-board">
+            <!-- Board squares will be dynamically generated by JS -->
+            <div class="home-center">GOAL</div>
+            <!-- Nest areas defined by CSS grid-area -->
+            <div class="nest nest-green" id="nest-green">
+                <div class="player-nest">
+                    <div class="nest-goti-slot" id="g-1-slot"></div>
+                    <div class="nest-goti-slot" id="g-2-slot"></div>
+                    <div class="nest-goti-slot" id="g-3-slot"></div>
+                    <div class="nest-goti-slot" id="g-4-slot"></div>
+                </div>
+            </div>
+            <div class="nest nest-yellow" id="nest-yellow">
+                <div class="player-nest">
+                    <div class="nest-goti-slot" id="y-1-slot"></div>
+                    <div class="nest-goti-slot" id="y-2-slot"></div>
+                    <div class="nest-goti-slot" id="y-3-slot"></div>
+                    <div class="nest-goti-slot" id="y-4-slot"></div>
+                </div>
+            </div>
+            <div class="nest nest-blue" id="nest-blue">
+                <div class="player-nest">
+                    <div class="nest-goti-slot" id="b-1-slot"></div>
+                    <div class="nest-goti-slot" id="b-2-slot"></div>
+                    <div class="nest-goti-slot" id="b-3-slot"></div>
+                    <div class="nest-goti-slot" id="b-4-slot"></div>
+                </div>
+            </div>
+            <div class="nest nest-red" id="nest-red">
+                <div class="player-nest">
+                    <div class="nest-goti-slot" id="r-1-slot"></div>
+                    <div class="nest-goti-slot" id="r-2-slot"></div>
+                    <div class="nest-goti-slot" id="r-3-slot"></div>
+                    <div class="nest-goti-slot" id="r-4-slot"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="start-button">Start Game</button>
+            <div id="dice-area" style="display:none;">
+                <div id="dice-display">?</div>
+                <button id="roll-button" disabled>Roll Dice</button>
+            </div>
+            <button id="toggle-sound-button" style="margin-top: 15px; padding: 8px 15px; border-radius: 8px; border: 1px solid #ccc;">Toggle Sound (OFF)</button>
+        </div>
+    </div>
+
+    <script>
+        // --- GAME CONSTANTS ---
+        const PLAYERS = {
+            RED: { id: 'r', color: 'red', pathStart: 0, nestStart: '13 / 13', nestEnd: '16 / 16' },
+            BLUE: { id: 'b', color: 'blue', pathStart: 13, nestStart: '13 / 1', nestEnd: '16 / 4' },
+            YELLOW: { id: 'y', color: 'yellow', pathStart: 26, nestStart: '1 / 13', nestEnd: '4 / 16' },
+            GREEN: { id: 'g', color: 'green', pathStart: 39, nestStart: '1 / 1', nestEnd: '4 / 4' },
+        };
+        const PLAYER_COLORS = ['r', 'b', 'y', 'g'];
+        const SAFE_SPOTS = [1, 9, 14, 22, 27, 35, 40, 48]; // General path index of safe spots
+        const START_SPOTS = { r: 1, b: 14, y: 27, g: 40 };
+        const HOME_ENTRIES = { r: 51, b: 12, y: 25, g: 38 }; // Path spots before home column entry
+        const NUM_SPOTS = 52;
+
+        // --- GAME STATE ---
+        let gameState = {
+            pieces: {}, // Stores position: {r-1: 0, r-2: 0, ...} 0=Nest, 1-52=Path, 53-58=Home Column, 59=Goal
+            currentPlayerIndex: 0,
+            diceValue: 0,
+            hasRolled: false,
+            canMove: false,
+            isGameOver: false,
+            currentSixes: 0,
+        };
+
+        // --- DOM ELEMENTS ---
+        const boardEl = document.getElementById('ludo-board');
+        const statusEl = document.getElementById('status-message');
+        const rollButton = document.getElementById('roll-button');
+        const diceDisplay = document.getElementById('dice-display');
+        const diceArea = document.getElementById('dice-area');
+        const startButton = document.getElementById('start-button');
+        const toggleSoundButton = document.getElementById('toggle-sound-button');
+
+        // --- TONE.JS (SOUND) SETUP ---
+        let synth;
+        let loop;
+        let isSoundOn = false;
+
+        function setupSound() {
+            try {
+                // Initialize a simple synth
+                synth = new Tone.PolySynth(Tone.Synth, {
+                    envelope: {
+                        attack: 0.05,
+                        decay: 0.1,
+                        sustain: 0.3,
+                        release: 1
+                    }
+                }).toDestination();
+
+                // Create a simple background loop
+                loop = new Tone.Loop(time => {
+                    if (isSoundOn) {
+                        synth.triggerAttackRelease(['C4', 'E4', 'G4'], '8n', time);
+                    }
+                }, '4n');
+            } catch (error) {
+                console.error("Tone.js setup failed:", error);
+            }
+        }
+
+        function toggleSound() {
+            isSoundOn = !isSoundOn;
+            if (isSoundOn) {
+                Tone.start();
+                loop.start(0);
+                toggleSoundButton.textContent = 'Toggle Sound (ON)';
+                playSound('start');
+            } else {
+                loop.stop();
+                toggleSoundButton.textContent = 'Toggle Sound (OFF)';
+            }
+        }
+
+        function playSound(type) {
+            if (!isSoundOn) return;
+            let note;
+            let duration = '8n';
+            switch (type) {
+                case 'roll': note = 'C5'; break;
+                case 'move': note = 'G4'; duration = '16n'; break;
+                case 'kick': note = 'C3'; duration = '4n'; break;
+                case 'win': note = ['C6', 'E6', 'G6']; duration = '2n'; break;
+                case 'start': note = ['C4', 'E4', 'G4', 'C5']; break;
+                default: return;
+            }
+            synth.triggerAttackRelease(note, duration);
+        }
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            generateBoard();
+            setupSound();
+            toggleSoundButton.addEventListener('click', toggleSound);
+            startButton.addEventListener('click', startGame);
+        });
+
+        // Defines the grid positions for the 52 main path squares + 6 home column squares per player
+        function getSquareGridPosition(index) {
+            // Index is 1-based, 1 to 52 for main path. 53-58 for home column.
+            const path = [
+                // Red's Path (1-13)
+                { gridArea: '14 / 7' }, { gridArea: '14 / 8' }, { gridArea: '14 / 9' }, { gridArea: '13 / 9' }, { gridArea: '12 / 9' }, { gridArea: '11 / 9' },
+                { gridArea: '10 / 9' }, { gridArea: '9 / 9' }, { gridArea: '9 / 10' }, { gridArea: '9 / 11' }, { gridArea: '9 / 12' }, { gridArea: '9 / 13' }, { gridArea: '9 / 14' },
+                // Blue's Path (14-26)
+                { gridArea: '8 / 14' }, { gridArea: '7 / 14' }, { gridArea: '7 / 13' }, { gridArea: '7 / 12' }, { gridArea: '7 / 11' }, { gridArea: '7 / 10' },
+                { gridArea: '7 / 9' }, { gridArea: '6 / 9' }, { gridArea: '5 / 9' }, { gridArea: '4 / 9' }, { gridArea: '3 / 9' }, { gridArea: '2 / 9' }, { gridArea: '1 / 9' },
+                // Yellow's Path (27-39)
+                { gridArea: '2 / 8' }, { gridArea: '2 / 7' }, { gridArea: '3 / 7' }, { gridArea: '4 / 7' }, { gridArea: '5 / 7' }, { gridArea: '6 / 7' },
+                { gridArea: '7 / 7' }, { gridArea: '7 / 6' }, { gridArea: '7 / 5' }, { gridArea: '7 / 4' }, { gridArea: '7 / 3' }, { gridArea: '7 / 2' }, { gridArea: '7 / 1' },
+                // Green's Path (40-52)
+                { gridArea: '8 / 1' }, { gridArea: '9 / 1' }, { gridArea: '9 / 2' }, { gridArea: '9 / 3' }, { gridArea: '9 / 4' }, { gridArea: '9 / 5' },
+                { gridArea: '9 / 6' }, { gridArea: '10 / 7' }, { gridArea: '11 / 7' }, { gridArea: '12 / 7' }, { gridArea: '13 / 7' }, { gridArea: '14 / 7' },
+                // The main path wraps around, the last spot is 52 (which is 14/7 - shared with Red's 1st spot)
+                { gridArea: '14 / 7' }, // Index 52 is effectively the same as Index 0 on the path array, but we use 1-based index (1-52)
+
+                // Home Columns (53-58 for each color)
+                // Red Home (R-H1 to R-H6)
+                { gridArea: '13 / 8' }, { gridArea: '12 / 8' }, { gridArea: '11 / 8' }, { gridArea: '10 / 8' }, { gridArea: '9 / 8' }, { gridArea: '8 / 8' },
+                // Blue Home (B-H1 to B-H6)
+                { gridArea: '7 / 13' }, { gridArea: '7 / 12' }, { gridArea: '7 / 11' }, { gridArea: '7 / 10' }, { gridArea: '7 / 9' }, { gridArea: '7 / 8' },
+                // Yellow Home (Y-H1 to Y-H6)
+                { gridArea: '2 / 8' }, { gridArea: '3 / 8' }, { gridArea: '4 / 8' }, { gridArea: '5 / 8' }, { gridArea: '6 / 8' }, { gridArea: '7 / 8' },
+                // Green Home (G-H1 to G-H6)
+                { gridArea: '8 / 2' }, { gridArea: '8 / 3' }, { gridArea: '8 / 4' }, { gridArea: '8 / 5' }, { gridArea: '8 / 6' }, { gridArea: '8 / 7' },
+            ];
+
+            // Map the 1-52 index to the 0-51 path array index
+            if (index >= 1 && index <= 52) {
+                return path[index - 1];
+            }
+            return null;
+        }
+
+        // Generate the 15x15 grid (non-nest areas)
+        function generateBoard() {
+            const gridAreas = [
+                // Red's home column (13-14, 7-9)
+                { r: 15, c: 8, cls: 'home-red path-red-entry' }, { r: 15, c: 9, cls: 'home-red' }, { r: 15, c: 7, cls: 'home-red' },
+                { r: 14, c: 8, cls: 'home-red' }, { r: 13, c: 8, cls: 'home-red' }, { r: 12, c: 8, cls: 'home-red' }, { r: 11, c: 8, cls: 'home-red' }, { r: 10, c: 8, cls: 'home-red' },
+
+                // Blue's home column (7-9, 13-14)
+                { r: 8, c: 15, cls: 'home-blue path-blue-entry' }, { r: 9, c: 15, cls: 'home-blue' }, { r: 7, c: 15, cls: 'home-blue' },
+                { r: 8, c: 14, cls: 'home-blue' }, { r: 8, c: 13, cls: 'home-blue' }, { r: 8, c: 12, cls: 'home-blue' }, { r: 8, c: 11, cls: 'home-blue' }, { r: 8, c: 10, cls: 'home-blue' },
+
+                // Yellow's home column (1-3, 7-9)
+                { r: 1, c: 8, cls: 'home-yellow path-yellow-entry' }, { r: 1, c: 7, cls: 'home-yellow' }, { r: 1, c: 9, cls: 'home-yellow' },
+                { r: 2, c: 8, cls: 'home-yellow' }, { r: 3, c: 8, cls: 'home-yellow' }, { r: 4, c: 8, cls: 'home-yellow' }, { r: 5, c: 8, cls: 'home-yellow' }, { r: 6, c: 8, cls: 'home-yellow' },
+
+                // Green's home column (7-9, 1-3)
+                { r: 8, c: 1, cls: 'home-green path-green-entry' }, { r: 7, c: 1, cls: 'home-green' }, { r: 9, c: 1, cls: 'home-green' },
+                { r: 8, c: 2, cls: 'home-green' }, { r: 8, c: 3, cls: 'home-green' }, { r: 8, c: 4, cls: 'home-green' }, { r: 8, c: 5, cls: 'home-green' }, { r: 8, c: 6, cls: 'home-green' },
+            ];
+
+            // Loop through all 15x15 cells
+            for (let r = 1; r <= 15; r++) {
+                for (let c = 1; c <= 15; c++) {
+                    // Skip Nest areas (r/c 1-6 or 10-15) and Center (r/c 7-9)
+                    const isNest = (r <= 6 || r >= 10) && (c <= 6 || c >= 10);
+                    const isCenter = r >= 7 && r <= 9 && c >= 7 && c <= 9;
+
+                    if (!isNest && !isCenter) {
+                        const cell = document.createElement('div');
+                        cell.className = 'square';
+                        cell.style.gridArea = `${r} / ${c}`;
+
+                        // Check if this square is part of a home column path or the main path
+                        const homePathMatch = gridAreas.find(g => g.r === r && g.c === c);
+                        if (homePathMatch) {
+                            cell.className += ` ${homePathMatch.cls}`;
+                        } else {
+                            // Main path (7-9 row/col)
+                            const pathIndex = findPathIndex(r, c);
+                            if (pathIndex !== null) {
+                                cell.id = `spot-${pathIndex}`;
+                                cell.setAttribute('data-index', pathIndex);
+
+                                // Add safe spot class
+                                if (SAFE_SPOTS.includes(pathIndex)) {
+                                    cell.classList.add('safe-square');
+                                }
+
+                                // Add start spot class
+                                if (pathIndex === START_SPOTS.r) cell.classList.add('path-start-red');
+                                if (pathIndex === START_SPOTS.b) cell.classList.add('path-start-blue');
+                                if (pathIndex === START_SPOTS.y) cell.classList.add('path-start-yellow');
+                                if (pathIndex === START_SPOTS.g) cell.classList.add('path-start-green');
+
+                                // Add home entry class (the spot before the colored entry square)
+                                if (pathIndex === 51) cell.classList.add('path-red-pre-entry');
+                                if (pathIndex === 12) cell.classList.add('path-blue-pre-entry');
+                                if (pathIndex === 25) cell.classList.add('path-yellow-pre-entry');
+                                if (pathIndex === 38) cell.classList.add('path-green-pre-entry');
+
+                            }
+                        }
+                        boardEl.appendChild(cell);
+                    }
+                }
+            }
+        }
+
+        // Helper function to map grid coordinates to a 1-52 path index
+        function findPathIndex(r, c) {
+            const pathLookup = [
+                // Red Start to Blue Start (1-14)
+                { r: 14, c: 7, idx: 1 }, { r: 14, c: 8, idx: 2 }, { r: 14, c: 9, idx: 3 }, { r: 13, c: 9, idx: 4 }, { r: 12, c: 9, idx: 5 }, { r: 11, c: 9, idx: 6 },
+                { r: 10, c: 9, idx: 7 }, { r: 9, c: 9, idx: 8 }, { r: 9, c: 10, idx: 9 }, { r: 9, c: 11, idx: 10 }, { r: 9, c: 12, idx: 11 }, { r: 9, c: 13, idx: 12 },
+                { r: 9, c: 14, idx: 13 }, { r: 8, c: 14, idx: 14 },
+                // Blue Start to Yellow Start (15-27)
+                { r: 7, c: 14, idx: 15 }, { r: 7, c: 13, idx: 16 }, { r: 7, c: 12, idx: 17 }, { r: 7, c: 11, idx: 18 }, { r: 7, c: 10, idx: 19 }, { r: 7, c: 9, idx: 20 },
+                { r: 6, c: 9, idx: 21 }, { r: 5, c: 9, idx: 22 }, { r: 4, c: 9, idx: 23 }, { r: 3, c: 9, idx: 24 }, { r: 2, c: 9, idx: 25 }, { r: 1, c: 9, idx: 26 },
+                { r: 2, c: 8, idx: 27 },
+                // Yellow Start to Green Start (28-40)
+                { r: 2, c: 7, idx: 28 }, { r: 3, c: 7, idx: 29 }, { r: 4, c: 7, idx: 30 }, { r: 5, c: 7, idx: 31 }, { r: 6, c: 7, idx: 32 }, { r: 7, c: 7, idx: 33 },
+                { r: 7, c: 6, idx: 34 }, { r: 7, c: 5, idx: 35 }, { r: 7, c: 4, idx: 36 }, { r: 7, c: 3, idx: 37 }, { r: 7, c: 2, idx: 38 }, { r: 7, c: 1, idx: 39 },
+                { r: 8, c: 1, idx: 40 },
+                // Green Start to Red Start (41-52)
+                { r: 9, c: 1, idx: 41 }, { r: 9, c: 2, idx: 42 }, { r: 9, c: 3, idx: 43 }, { r: 9, c: 4, idx: 44 }, { r: 9, c: 5, idx: 45 }, { r: 9, c: 6, idx: 46 },
+                { r: 9, c: 7, idx: 47 }, { r: 10, c: 7, idx: 48 }, { r: 11, c: 7, idx: 49 }, { r: 12, c: 7, idx: 50 }, { r: 13, c: 7, idx: 51 }, { r: 14, c: 7, idx: 52 },
+            ];
+
+            const match = pathLookup.find(p => p.r === r && p.c === c);
+            return match ? match.idx : null;
+        }
+
+        // Creates the physical piece elements and sets initial state
+        function initPieces() {
+            PLAYER_COLORS.forEach(pId => {
+                for (let i = 1; i <= 4; i++) {
+                    const pieceId = `${pId}-${i}`;
+                    gameState.pieces[pieceId] = 0; // 0 means in nest
+                    const pieceEl = document.createElement('div');
+                    pieceEl.className = `piece ${PLAYERS[getColorName(pId)].color}`;
+                    pieceEl.id = pieceId;
+                    pieceEl.textContent = i;
+                    pieceEl.addEventListener('click', handlePieceClick);
+                    document.getElementById(`${pId}-${i}-slot`).appendChild(pieceEl); // Start in nest
+                }
+            });
+        }
+
+        function startGame() {
+            startButton.style.display = 'none';
+            diceArea.style.display = 'flex';
+            initPieces();
+            rollButton.addEventListener('click', rollDice);
+            rollButton.disabled = false;
+            updateStatus();
+        }
+
+        // --- CORE GAME LOGIC ---
+
+        function getColorName(id) {
+            return { 'r': 'RED', 'b': 'BLUE', 'y': 'YELLOW', 'g': 'GREEN' }[id];
+        }
+
+        function getCurrentPlayer() {
+            const playerId = PLAYER_COLORS[gameState.currentPlayerIndex];
+            return PLAYERS[getColorName(playerId)];
+        }
+
+        function rollDice() {
+            if (gameState.hasRolled || gameState.isGameOver) return;
+
+            playSound('roll');
+
+            // Simulate rolling animation
+            diceDisplay.textContent = '...';
+            rollButton.disabled = true;
+
+            setTimeout(() => {
+                const roll = Math.floor(Math.random() * 6) + 1;
+                gameState.diceValue = roll;
+                diceDisplay.textContent = roll;
+                gameState.hasRolled = true;
+
+                if (roll === 6) {
+                    gameState.currentSixes++;
+                } else {
+                    gameState.currentSixes = 0;
+                }
+
+                // Check for valid moves
+                highlightAvailableMoves();
+
+                if (gameState.canMove) {
+                    updateStatus(`Rolled ${roll}. Select a piece to move.`);
+                } else {
+                    updateStatus(`Rolled ${roll}. No valid moves. Pass turn.`);
+                    // If 6 was rolled but no move possible, player still gets another roll (but only max 3 sixes)
+                    if (roll !== 6 || gameState.currentSixes >= 3) {
+                         // No move, no six, or 3 consecutive sixes: end turn after a delay
+                        setTimeout(endTurn, 1500);
+                    } else {
+                        // Rolled a six, but no move possible. Roll again.
+                        rollButton.disabled = false;
+                    }
+                }
+            }, 700);
+        }
+
+        function highlightAvailableMoves() {
+            const player = getCurrentPlayer();
+            const playerPieces = Object.keys(gameState.pieces).filter(id => id.startsWith(player.id));
+            let hasMove = false;
+
+            playerPieces.forEach(pieceId => {
+                const currentPos = gameState.pieces[pieceId];
+                const pieceEl = document.getElementById(pieceId);
+                pieceEl.classList.remove('active-move');
+
+                if (isValidMove(pieceId, currentPos, gameState.diceValue)) {
+                    pieceEl.classList.add('active-move');
+                    hasMove = true;
+                }
+            });
+
+            gameState.canMove = hasMove;
+            rollButton.disabled = true; // Disable roll button until move is made or turn ends
+        }
+
+        function isValidMove(pieceId, currentPos, diceValue) {
+            const player = getCurrentPlayer();
+            const startSpot = START_SPOTS[player.id];
+            const homeEntrySpot = HOME_ENTRIES[player.id];
+
+            // 1. Piece in Nest (Pos 0)
+            if (currentPos === 0) {
+                return diceValue === 6;
+            }
+
+            // 2. Piece on Path (Pos 1-52)
+            if (currentPos > 0 && currentPos <= NUM_SPOTS) {
+                const targetPos = currentPos + diceValue;
+
+                // Check for home column entry
+                if (targetPos > NUM_SPOTS) {
+                    // Check if piece has passed its entry spot
+                    // This logic simplifies the home column entry check
+                    const pathDiff = (targetPos - startSpot + NUM_SPOTS) % NUM_SPOTS;
+                    const homeEntryDiff = (homeEntrySpot - startSpot + NUM_SPOTS) % NUM_SPOTS;
+
+                    if (pathDiff > homeEntryDiff && currentPos <= homeEntrySpot) {
+                        // The piece is attempting to move into its home column
+                        const homeColumnPos = targetPos - homeEntrySpot; // 1-based index in home column (1-6)
+                        return homeColumnPos >= 1 && homeColumnPos <= 6;
+                    }
+                    // It is simply moving on the main path (e.g., from 40 to 45 with a roll of 5)
+                    return targetPos <= NUM_SPOTS;
+                }
+
+                return true;
+            }
+
+            // 3. Piece in Home Column (Pos 53-58)
+            // Positions are relative: 53 is H1, 58 is H6
+            if (currentPos > NUM_SPOTS && currentPos < 59) {
+                const newHomeColumnPos = currentPos + diceValue;
+                return newHomeColumnPos <= 59; // Max position is 59 (Goal)
+            }
+
+            // 4. Piece in Goal (Pos 59)
+            if (currentPos === 59) {
+                return false;
+            }
+
+            return false;
+        }
+
+        function handlePieceClick(event) {
+            const pieceId = event.target.id;
+            const pieceEl = document.getElementById(pieceId);
+            const player = getCurrentPlayer();
+            const currentPos = gameState.pieces[pieceId];
+            const diceValue = gameState.diceValue;
+
+            // 1. Check if it's the current player's piece
+            if (!pieceId.startsWith(player.id)) {
+                updateStatus(`It's ${player.color}'s turn. Select their piece.`);
+                return;
+            }
+
+            // 2. Check if a roll has occurred and a move is pending
+            if (!gameState.hasRolled) {
+                updateStatus('Please roll the dice first.');
+                return;
+            }
+
+            // 3. Check if the move is valid
+            if (!isValidMove(pieceId, currentPos, diceValue)) {
+                updateStatus(`Invalid move for ${pieceId} with a roll of ${diceValue}.`);
+                return;
+            }
+
+            // --- EXECUTE MOVE ---
+            movePiece(pieceId, currentPos, diceValue);
+
+            // Remove all active move highlights
+            Object.keys(gameState.pieces).forEach(id => {
+                document.getElementById(id).classList.remove('active-move');
+            });
+
+            // After move, check for winning condition
+            checkWinCondition(player.id);
+
+            // Check if player gets another roll (6 or just entered a piece)
+            if (diceValue !== 6 && gameState.pieces[pieceId] !== 59) {
+                endTurn();
+            } else if (diceValue === 6 && gameState.currentSixes < 3) {
+                // Rolled a 6 and successfully moved: player gets another turn
+                gameState.hasRolled = false;
+                rollButton.disabled = false;
+                updateStatus(`Rolled 6! ${player.color} rolls again.`);
+            } else {
+                // Either moved a piece on a 6 (and it was the 3rd six), or moved into Goal (59)
+                endTurn();
+            }
+        }
+
+        function movePiece(pieceId, currentPos, diceValue) {
+            const player = getCurrentPlayer();
+            let newPos = currentPos;
+            const startSpot = START_SPOTS[player.id];
+            const homeEntrySpot = HOME_ENTRIES[player.id];
+            const pieceEl = document.getElementById(pieceId);
+
+            // Move 1: From Nest (0)
+            if (currentPos === 0) {
+                newPos = startSpot;
+            }
+            // Move 2: On Path (1-52) or into Home Column (53-58)
+            else if (currentPos > 0 && currentPos < 59) {
+                const targetPos = currentPos + diceValue;
+
+                // Check if the move leads into the Home Column (53-58) or Goal (59)
+                if (targetPos > homeEntrySpot && currentPos <= homeEntrySpot) {
+                    newPos = NUM_SPOTS + (targetPos - homeEntrySpot); // 52 + (1-6) = 53 to 58
+                } else if (targetPos === homeEntrySpot && currentPos <= homeEntrySpot) {
+                    // This is the square *before* the entry, just move normally
+                    newPos = targetPos;
+                }
+                else {
+                    // Standard path move (handles path wrap-around for other players)
+                    newPos = targetPos > NUM_SPOTS ? targetPos % NUM_SPOTS : targetPos;
+                    if (newPos === 0) newPos = NUM_SPOTS; // 52+1=53, 53%52 = 1. if 52+6 = 58, 58%52 = 6
+                }
+            }
+
+            // Final position adjustment for goal
+            if (newPos === NUM_SPOTS + 7) {
+                newPos = 59; // Goal
+            }
+
+            // Update state
+            gameState.pieces[pieceId] = newPos;
+
+            // Update visual position
+            updatePiecePosition(pieceId, newPos);
+
+            // Check for Kicking (only if the new position is on the main path, 1-52)
+            if (newPos >= 1 && newPos <= NUM_SPOTS && !SAFE_SPOTS.includes(newPos)) {
+                checkKick(player.id, newPos);
+            }
+
+            playSound('move');
+        }
+
+        function checkKick(movingPlayerId, spot) {
+            const opponentPieces = Object.keys(gameState.pieces).filter(id => !id.startsWith(movingPlayerId));
+
+            opponentPieces.forEach(opponentPieceId => {
+                if (gameState.pieces[opponentPieceId] === spot) {
+                    // Kick! Send opponent piece back to nest (0)
+                    gameState.pieces[opponentPieceId] = 0;
+                    updatePiecePosition(opponentPieceId, 0);
+                    updateStatus(`${getColorName(movingPlayerId)} kicked ${getColorName(opponentPieceId)}'s piece!`);
+                    playSound('kick');
+
+                    // Player who kicked gets an extra roll (unless it was a 6 already, or already had 3 sixes)
+                    if (gameState.diceValue !== 6 && gameState.currentSixes < 3) {
+                         gameState.hasRolled = false;
+                         rollButton.disabled = false;
+                         updateStatus(`${getColorName(movingPlayerId)} kicked a piece and gets an extra roll!`);
+                    }
+                }
+            });
+        }
+
+        function updatePiecePosition(pieceId, newPos) {
+            const pieceEl = document.getElementById(pieceId);
+            const player = getCurrentPlayer();
+
+            // 1. Move to Nest (Pos 0)
+            if (newPos === 0) {
+                const slotEl = document.getElementById(`${pieceId.split('-')[0]}-${pieceId.split('-')[1]}-slot`);
+                slotEl.appendChild(pieceEl);
+                pieceEl.style.position = 'relative';
+                pieceEl.style.transform = 'none';
+                return;
+            }
+
+            // 2. Move to Goal (Pos 59)
+            if (newPos === 59) {
+                // Move piece to the center of the home triangle (visually)
+                const centerEl = document.querySelector('.home-center');
+                centerEl.appendChild(pieceEl);
+                pieceEl.style.position = 'absolute';
+                pieceEl.style.transform = 'translate(-50%, -50%)'; // Center it visually
+                pieceEl.style.cursor = 'default';
+                return;
+            }
+
+            // 3. Move on Path (1-52) or Home Column (53-58)
+            const target = getTargetElement(pieceId, newPos);
+            if (target) {
+                // Calculate position relative to the center of the square
+                const squareSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--square-size'));
+                const pieceOffset = squareSize / 4; // Arbitrary offset to cluster pieces
+
+                pieceEl.style.position = 'absolute';
+
+                // Simple clustering logic if multiple pieces are on the same square
+                const piecesOnSpot = Object.keys(gameState.pieces).filter(id => gameState.pieces[id] === newPos);
+                const index = piecesOnSpot.indexOf(pieceId);
+
+                let offsetX = '0%';
+                let offsetY = '0%';
+
+                if (piecesOnSpot.length > 1) {
+                    // Offset pieces slightly
+                    switch (index % 4) {
+                        case 0: offsetX = `-${pieceOffset}px`; offsetY = `-${pieceOffset}px`; break; // Top-Left
+                        case 1: offsetX = `${pieceOffset}px`; offsetY = `-${pieceOffset}px`; break;  // Top-Right
+                        case 2: offsetX = `-${pieceOffset}px`; offsetY = `${pieceOffset}px`; break;  // Bottom-Left
+                        case 3: offsetX = `${pieceOffset}px`; offsetY = `${pieceOffset}px`; break;  // Bottom-Right
+                    }
+                }
+
+                target.appendChild(pieceEl);
+                // Position piece at the center of the square, then apply offset
+                pieceEl.style.left = `calc(50% - ${pieceEl.clientWidth / 2}px + ${offsetX})`;
+                pieceEl.style.top = `calc(50% - ${pieceEl.clientHeight / 2}px + ${offsetY})`;
+                pieceEl.style.transform = 'none'; // Clear any previous transform (like pulse)
+            }
+        }
+
+        // Determines the physical DOM element corresponding to a logical position
+        function getTargetElement(pieceId, newPos) {
+            const playerColor = pieceId.charAt(0);
+            const colorName = getColorName(playerColor).toLowerCase();
+
+            // Path squares (1-52)
+            if (newPos >= 1 && newPos <= NUM_SPOTS) {
+                return document.getElementById(`spot-${newPos}`);
+            }
+
+            // Home Column (53-58)
+            if (newPos > NUM_SPOTS && newPos < 59) {
+                const homeIndex = newPos - NUM_SPOTS; // 1 to 6
+                let r, c;
+                // Simplified grid-area mapping for home column squares (r/c are 1-based)
+                switch (colorName) {
+                    case 'red': r = 14 - (homeIndex - 1); c = 8; break; // R1: 14/8, R6: 9/8
+                    case 'blue': r = 8; c = 14 - (homeIndex - 1); break; // B1: 8/14, B6: 8/9
+                    case 'yellow': r = 2 + (homeIndex - 1); c = 8; break; // Y1: 2/8, Y6: 7/8
+                    case 'green': r = 8; c = 2 + (homeIndex - 1); break; // G1: 8/2, G6: 8/7
+                }
+                // Locate the square based on grid-area
+                return document.querySelector(`.square[style*="grid-area: ${r} / ${c}"]`);
+            }
+
+            // Goal (59)
+            if (newPos === 59) {
+                return document.querySelector('.home-center');
+            }
+
+            return null;
+        }
+
+        function endTurn() {
+            if (gameState.isGameOver) return;
+
+            gameState.diceValue = 0;
+            gameState.hasRolled = false;
+            gameState.currentSixes = 0;
+            diceDisplay.textContent = '?';
+
+            // Advance to the next player
+            gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % PLAYER_COLORS.length;
+            const nextPlayer = getCurrentPlayer();
+
+            // Check if next player has already won (and skip them)
+            if (hasWon(nextPlayer.id)) {
+                endTurn(); // Skip to the next player recursively
+                return;
+            }
+
+            rollButton.disabled = false;
+            updateStatus(`It's ${nextPlayer.color}'s turn. Roll the dice.`);
+        }
+
+        function checkWinCondition(playerId) {
+            const playerPieces = Object.keys(gameState.pieces).filter(id => id.startsWith(playerId));
+            const allAtGoal = playerPieces.every(pieceId => gameState.pieces[pieceId] === 59);
+
+            if (allAtGoal) {
+                setWinner(playerId);
+            }
+        }
+
+        function hasWon(playerId) {
+            const playerPieces = Object.keys(gameState.pieces).filter(id => id.startsWith(playerId));
+            return playerPieces.every(pieceId => gameState.pieces[pieceId] === 59);
+        }
+
+        function setWinner(playerId) {
+            gameState.isGameOver = true;
+            const colorName = getColorName(playerId);
+            updateStatus(`${colorName} wins the game! 🎉`);
+            rollButton.disabled = true;
+            playSound('win');
+        }
+
+        function updateStatus(message = null) {
+            const player = getCurrentPlayer();
+            const colorName = player.color;
+            const messageText = message || `It's ${colorName}'s turn. Roll the dice.`;
+
+            statusEl.textContent = messageText;
+            statusEl.style.borderColor = player.color;
+            statusEl.style.backgroundColor = `var(--${player.color})`;
+            statusEl.style.color = 'white';
+        }
+
+    </script>
+</body>
+</html>
