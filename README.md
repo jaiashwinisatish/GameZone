@@ -24,7 +24,7 @@
 
 GameZone is designed for **absolute beginners** who want to learn coding in a fun, interactive way! Each game teaches different programming concepts while keeping you entertained. No boring tutorials here - just pure coding fun! ☕🎮
 
-### 🆕 Fresh Content Daily!
+### 🆕 Fresh Content Daily!!
 We add **new games regularly** to keep your learning journey exciting! From simple puzzles to complex 3D adventures, there's always something new to explore and learn from.
 
 **👀 Watch this repo** to get notified when new games are added!
